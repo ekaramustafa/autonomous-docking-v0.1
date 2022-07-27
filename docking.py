@@ -408,13 +408,13 @@ class Docking():
 
 
     def findTag(self,data):
-
+    
         return
 
 
-    ###############
-    ####DOCKING####
-    ###############
+    """
+    DOCKING STAGE
+    """
     def docking(self):
 
         
