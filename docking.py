@@ -10,7 +10,7 @@ import numpy as np
 import tf
 from sensor_msgs.msg import Imu
 from tf import transformations as t
-from vision.scripts.AprilTag.tools import Tools, paper_tools
+import tools
 
 
 class Docking():
@@ -23,10 +23,7 @@ class Docking():
         #rospy.sleep(6) #in source code, its purpose is said to be for waiting for the AprilTagDetectionNode
 
         #tag_sub is for getting average position angle
-        self.tag_sub = rospy.Subscriber("tag_detections",apriltag_ros.msg.AprilTagDetectionArray,self.get_avg_position_angle_callback)
-
-        #find_tag_sub is for finding the right tag // not priority
-        self.find_tag_sub = rospy.Subscriber("tag_detections",apriltag_ros.msg.AprilTagDetectionArray,self.findTag)     
+        self.tag_sub = rospy.Subscriber("tag_detections",apriltag_ros.msg.AprilTagDetectionArray,self.get_avg_position_angle_callback)  
 
         #imu_sub is to get IMU data to calculate actual_angle
         self.imu_sub = rospy.Subscriber("imu_topic",Imu,self.actual_angle)
@@ -64,8 +61,6 @@ class Docking():
         #actual_angle
         self.angle = 0
 
-        #for tag_sub callback //not priority
-        self.TAG_AVAILABLE = False
 
         ##Need explanations
         self.try_more = True
@@ -78,18 +73,9 @@ class Docking():
         self.avg_y = avg(10)
         self.avg_yaw = avg(10)
 
-        #Note: in source code odom_pos is 2D Vector. In python modules not possible for now(?)
+
         self.odom_pos = geometry_msgs.msg.Vector3()
 
-
-
-
-
-        ###OPTIMIZATION TRIALS
-        self.tools = paper_tools() 
-
-##########################################################################################################################################################################
-##########################################################################################################################################################################
 ##########################################################################################################################################################################
     """
     INITS OF LINKS
@@ -122,7 +108,7 @@ class Docking():
             rospy.logerr(ex)  
             rospy.sleep(1.0)
 
-#####################################################################################
+##########################################################################################################################################################################
 #INIT OF ANGLE AND ODOM_TRANSFORM WITH CALLBACKS
 
     """
@@ -146,11 +132,6 @@ class Docking():
         pose = geometry_msgs.msg.Vector3(data.pose.pose.position.x,data.pose.pose.position.y,data.pose.pose.position.z)
 
         self.odom_transform = geometry_msgs.msg.Transform(pose,quaternion)
-#####################################################################################
-
-
-##########################################################################################################################################################################
-##########################################################################################################################################################################
 ##########################################################################################################################################################################
 
 #DOCKING AND DIRECTION ANGLE CALCULATIONS
@@ -197,34 +178,13 @@ class Docking():
         wd_rad = math.atan2(tag_x/tag_y)
 
         return wd_rad
-##########################################################################################################################################################################
-##########################################################################################################################################################################
-
-    """
-    TOOLS = NEED TO BE IN THE DIFFERENT CLASS !!
-    """
-    def getOrigin(self,transform):
-        #Matrix_for_t = 4*4 homogenous transformation matrix
-        matrix_for_t = self.get_transformation_matrix(transform)
-        
-        #originated is translation vector of matrix_for_t 
-        originated = t.translation_from_matrix(matrix_for_t)
-        #originated = [x,y,z]
-        x = originated[0]
-        y = originated[1]
-        z = originated[2]
-        return [x,y,z]
-
-
-    def getAbs(self,other):
-
-        if other < 0:
-            return (-1)*other
-        else:
-            return other
     
+    """
+    CALCULATING YAW ANGLE
+    """
+
     def get_yaw_angle(self):
-        yaw = geometry_msgs.msg.TransformStamped
+        yaw = geometry_msgs.msg.TransformStamped()
 
         try:
             begin = rospy.Time.now()
@@ -232,27 +192,25 @@ class Docking():
             self.tf_listener.lookupTransform(self.base_link,self.tag_id,yaw)
         except Exception as ex:
             rospy.logerr(ex)
-            rospy.sleep(1.0)
-        #yaw has header, child_frame_id and transform
-            #transfrom has translation & rotation
-                #Rotation is Quaternion we will get yaw angle from Quaternion   
+            rospy.sleep(1.0) 
        
         #return  -(M_PI/2 + tf::getYaw(yaw.getRotation()));
         yaw_quaternion = yaw.transform.rotation
 
         #ai, aj, ak : Euler's roll, pitch and yaw angles
-        euler_angles = self.get_euler(yaw_quaternion)
+        euler_angles = tools.get_euler_angles(yaw_quaternion)
+        
+        #euler_angles = self.get_euler(yaw_quaternion)
+        
         yaw = euler_angles[2]
         
         
-        #issue: M_PI ??
+        #ISSUE: M_PI ??
         return -(M_PI/2 + yaw)
     
-    def get_euler(self,quat):
-        #RETURNS EULER ANGLES
-        return t.euler_from_quaternion(quat)
-
-
+    """
+    RETURNS POINT OBJECT
+    """
     def get_position(self):
         transform = geometry_msgs.msg.TransformStamped()
 
@@ -264,95 +222,26 @@ class Docking():
         except Exception as ex:
             rospy.logerr(ex)
         
-        pos = geometry_msgs.msg.Point
 
-        pos_arr = self.getOrigin(transform)
+        pos = geometry_msgs.msg.Point()
+
+        pos_arr = tools.getOrigin(transform)
+        #pos_arr = self.getOrigin(transform)
         pos.x = pos_arr[0]
         
         pos.y = pos_arr[2]
 
         return pos
-    
-    def get_inv_matrix(self,Q):
-            return np.linalg.inv(Q)
-
-    def get_transformation_matrix(self,transform):
-        quaternion = transform.rotation
-        quaternion_arr = [quaternion.x,quaternion.y,quaternion.z,quaternion.w]
-        
-        rot_matrix = []
-        rot_matrix = t.quaternion_matrix(quaternion_arr)
-
-        translation = transform.translation
-
-
-        first_row = [rot_matrix[0][0],rot_matrix[0][1],rot_matrix[0][2],translation.x]
-        second_row = [rot_matrix[1][0],rot_matrix[1][1],rot_matrix[1][2],translation.y]
-        third_row = [rot_matrix[2][0],rot_matrix[2][1],rot_matrix[2][2],translation.z]
-        fourth_row = [0,0,0,1]
-        
-        transformation_matrix = np.array([first_row,second_row,third_row,fourth_row])
-
-
-        return transformation_matrix
-
-
-    def get_inv_transform_matrix(self,transform):
-        transformation_matrix = self.get_transformation_matrix(transform)
-        result_matrix = self.get_inv_matrix(transformation_matrix)
-
-        return result_matrix
-
-    def convert_matrix_to_transform(self,matrix):
-        translation = self.get_translation_vector(matrix)
-        rotation = self.get_rotation_matrix(matrix)
-        newTransform = geometry_msgs.msg.Transform(translation,rotation)
-        return newTransform
-
-
-    def get_rotation_matrix(self,matrix):
-
-        rotation_matrix = [
-        [matrix[0][0],matrix[0][1],matrix[0][2]],
-        [matrix[1][0],matrix[1][1],matrix[1][2]],
-        [matrix[2][0],matrix[2][1],matrix[2][2]]]
-        return rotation_matrix
-
-    def get_translation_vector(self,matrix):
-
-        x = matrix[0][3]
-        y= matrix[1][3]
-        z = matrix[2][3]
-        translation = [x,y,z]
-        return translation
-
-    def get_inv_transform(self,transform):
-        # TRASNFORM : GEOMETRYMSGS TRANSFORM
-        temp = self.get_transformation_matrix(transform)
-        # TEMP : LİST 4*4
-        inv_transform_matrix = self.get_inv_matrix(temp)
-
-        cords = self.get_translation_vector(inv_transform_matrix)
-        x = cords[0]
-        y = cords[1]
-        z = cords[2]
-
-        translation = geometry_msgs.msg.Vector3(x,y,z)
-        #DEBUG
-        rotation_matrix = self.get_rotation_matrix(inv_transform_matrix)
-        
-        result_quaternion = t.quaternion_from_matrix(rotation_matrix)
-
-        result_transform = geometry_msgs.msg.Transform(translation,result_quaternion)
-        
-        return result_transform
-
+##########################################################################################################################################################################
     """
     CALLBACK FUNCTIONS
     """
     
+
+    """
+    GETS THE AVERAGE POSITION
+    """
     def get_avg_position_angle_callback(self,data):
-        #for only one ID
 
         #TEMP
         #if self.start_avg:
@@ -368,7 +257,6 @@ class Docking():
                 b = pose.pose
                 p = b.pose
 
-                #p has 
                 point = p.position
                 x = point.x
                 y = point.y
@@ -379,37 +267,14 @@ class Docking():
                 optical_tag_quad = geometry_msgs.msg.Quaternion(p.orientation.x,p.orientation.y,p.orientation.z,p.orientation.w)
 
                 optical_tag_trans = geometry_msgs.msg.Transform(optical_tag_origin,optical_tag_quad)
+
+                tag_cam = tools.multiply_transform_objects()
+
+
                 
-                #For matrix multiplication
-                optical_tag_trans_inv_mtx = self.get_inv_transform_matrix(optical_tag_trans)
-                ####
-
-                transform_optical_cam_mtx = self.get_transformation_matrix(self.transform_optical_cam)
-
-                tag_cam_matrix = np.matmul(optical_tag_trans_inv_mtx,transform_optical_cam_mtx)
-
-                tag_cam = self.convert_matrix_to_transform(tag_cam_matrix)
-
-                #For matrix multiplication
-                transform_cam_base_mtx = self.get_transformation_matrix(self.transform_cam_base)
-                tag_base_matrix = np.matmul(tag_cam_matrix,transform_cam_base_mtx)
-
-                tag_base = self.convert_matrix_to_transform(tag_base_matrix)     
-                
-                base_tag = self.get_inv_transform(tag_base)
-
-                base_tag_cor = self.getOrigin(base_tag)
-
-                xx = base_tag_cor[0]
-                yy = base_tag_cor[1]
-                zz = base_tag_cor[2]
-                euler_base_tag = self.get_euler(geometry_msgs.msg.Quaternion (base_tag.rotation))
-                yaw = euler_base_tag[2]
-
-
-    def findTag(self,data):
-    
-        return
+##########################################################################################################################################################################
+##########################################################################################################################################################################
+##########################################################################################################################################################################
 
 
     """
