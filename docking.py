@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import math
 
+from sqlalchemy import false
+
 import avg
 import rospy
 import geometry_msgs.msg
@@ -28,6 +30,9 @@ class Docking():
         #imu_sub is to get IMU data to calculate actual_angle
         self.imu_sub = rospy.Subscriber("imu_topic",Imu,self.actual_angle)
 
+        #find_tag_sub is to search for specific tag_id 
+        self.find_tag_sub = rospy.Subscriber("tag_detections",apriltag_ros.msg.AprilTagDetectionArray,self.findTag)
+
         #odom_sub is to get /odom frame
         self.odom_sub = rospy.Subscriber("odom",nav_msgs.msg.Odometry,self.get_odom_pos)
         
@@ -54,17 +59,17 @@ class Docking():
         self.get_cameraLink_baseLink()
         self.get_optical_frame()
 
-        self.start_avg = True #must be false in the end of the project
+        self.start_avg = False #must be false in the end of the project
 
         self.find_tag = False
         
         #actual_angle
         self.angle = 0
 
+        self.TAG_AVAILABLE = False
 
-        ##Need explanations
+        #to keep trying after failed attempts
         self.try_more = True
-        self.bumper_pressed = False
 
         #Average of several vars
         self.avg_pos = avg(10)
@@ -79,7 +84,17 @@ class Docking():
         self.avg_position_y = 0
         self.avg_yaw_angle = 0
 
+        #A variable for battery status to check whether the robot needs to be charged
+        self.docking_status = True
+        #We do not want our robot to collide with anything
+        self.bumper_pressed = False
+
         self.odom_pos = geometry_msgs.msg.Vector3()
+
+        ##ASK
+        self.M_PI = 0.0 #180 degrees, Pi
+
+        self.startDocking()
 
 ##########################################################################################################################################################################
     """
@@ -172,19 +187,16 @@ class Docking():
             rospy.logerr(ex)
             rospy.sleep(1.0) 
        
-        #return  -(M_PI/2 + tf::getYaw(yaw.getRotation()));
         yaw_quaternion = yaw.transform.rotation
 
         #ai, aj, ak : Euler's roll, pitch and yaw angles
         euler_angles = tools.get_euler_angles(yaw_quaternion)
-        
-        #euler_angles = self.get_euler(yaw_quaternion)
-        
+                
         yaw = euler_angles[2]
         
         
         #ISSUE: M_PI ??
-        return -(M_PI/2 + yaw)
+        return -(self.M_PI/2 + yaw)
     
     """
     RETURNS POINT OBJECT
@@ -244,15 +256,7 @@ class Docking():
         """
         GETS THE AVERAGE POSITION
         """
-
-        #TEMP
-        #if self.start_avg:
-        if True:
-            size= len(data.detections)
-
-            if (size !=1):
-                rospy.logerr(f"must have exactly one apriltag, currently {size}")
-            else:
+        if self.start_avg:
 
                 detect = data.detections[0]
                 pose = detect.pose
@@ -274,7 +278,7 @@ class Docking():
                 
                 tag_base = tools.multiply_transforms(tag_cam,self.transform_cam_base)
 
-                base_tag = tools.get_inverse_transform_object()
+                base_tag = tools.get_inverse_transform_object(tag_base)
 
                 
                 cords_vec = tools.get_translation_vector(base_tag)
@@ -288,14 +292,14 @@ class Docking():
                 
                 else:     
                     alpha_dock = math.atan2(yy/xx)
-                    alpha_pos = alpha_dock - (M_PI/2 + yaw)
+                    alpha_pos = alpha_dock - (self.M_PI/2 + yaw)
                     
                     if(math.isfinite(alpha_pos)):
                         self.avg_pos.new_value(alpha_pos)
                         self.avg_dock.new_value(alpha_dock)
                         self.avg_x.new_value(z)
                         self.avg_y.new_value(x)
-                        self.avg_yaw.new_value(yaw+ (M_PI/2))
+                        self.avg_yaw.new_value(yaw+ (self.M_PI/2))
 
                         avg_pos_angle = self.avg_pos.avg()
                         avg_dock_angle = self.avg_dock.avg()
@@ -312,30 +316,339 @@ class Docking():
 ##########################################################################################################################################################################
 ##########################################################################################################################################################################
 
-#FUNDAMENTAL
+#FUNDAMENTAL FUNC
+    def drive_forward(self,distance):
+        rospy.loginfo("Start to move forward...")
+        #-0.055 is a magic offset to drive exact distances  
+        distance = distance - 0.055
+
+        velocity = 0.15
+        direction = distance / abs(distance)
+
+        #We actually save the start Transformation
+        startTransform = self.odom_transform
+        startPos = tools.get_translation_vector(tools.get_transformation_matrix(startTransform))
+
+        goal = distance
+        driven_x = 0
+        driven_y = 0
+        pos_now = geometry_msgs.msg.Vector3()
+
+        while direction*goal <= direction * distance:
+            base = geometry_msgs.msg.Twist
+            base.angular.z = 0
+            base.linear.x = direction*velocity
+            self.vel_pub.publish(base)
+
+            #Calculate the driven way which is the difference between 
+            #the startTransform and the actual transform
+            pos_now = tools.get_translation_vector(tools.get_transformation_matrix(self.odom_transform))
+            driven_x = pos_now.x - startPos.x
+            driven_y = pos_now.y - startPos.y
+            goal = direction * math.sqrt(driven_x*driven_x + driven_y*driven_y) 
+            
+            rospy.loginfo("The driven distance is {}".format(goal))
+
+            rospy.sleep(0.3)
+
+        zero = geometry_msgs.msg.Twist()
+        self.vel_pub.publish(zero)
+
+#FUNDAMENTAL FUNC
+    def drive_backward(self,distance):
+        self.drive_forward(-distance)
+
+#FUNDAMENATAL FUNC
+    def move_angle(self,alpha_rad):
+        if alpha_rad != 0.0:
+            turn_veloctiy = 0.5
+            DT = abs(0.1/turn_veloctiy)
+            goal_angle = self.angle + alpha_rad
+            N = abs(goal_angle/self.M_PI)
+            rest = abs(goal_angle - N*self.M_PI)
+
+            if rest > 0 and N>0:
+                goal_angle = -self.M_PI + rest if goal_angle > self.M_PI else goal_angle
+                goal_angle = self.M_PI - rest if goal_angle< -self.M_PI else goal_angle
+
+
+                rad_velocity = (-1)*turn_veloctiy if alpha_rad < 0 else turn_veloctiy
+                weiter = True
+                alpha_old = 0
+                alpha_new = self.angle
+
+                while weiter:
+                    base = geometry_msgs.msg.Twist()
+                    base.linear.x = 0
+                    base.angular.z = rad_velocity
+                    self.vel_pub.publish(base)
+
+                    rospy.sleep(DT)
+                    epsilon = goal_angle - self.angle
+                    epsilon = abs(epsilon)
+                    weiter = epsilon > 0.1
+    
+    def findTag(self,data):
+        if self.find_tag:  
+            for i in range(len(data.detections)):
+                tag_id = data.detections[i].id
+
+                if self.tag_id == tag_id:
+                    X = rospy.Duration(2.0)
+                    time = data.detections[i].pose.header.stamp
+                    now = rospy.Time.now()
+                    age = now-time
+
+                    if X > age:
+                        secs = rospy.Duration.to_sec(age)
+
+                        self.TAG_AVAILABLE = True
 
 ##########################################################################################################################################################################
 ##########################################################################################################################################################################
+    def searchTag(self):
+        rospy.loginfo("[searchTag] Searching Tag...")
+        self.find_tag = True # triggers to findTag() callback function
+        rospy.sleep(1.5)
 
-    """
-    DOCKING STAGE
-    """
-    def docking(self):
-
+        while not self.TAG_AVAILABLE:
+            rospy.loginfo("[searchTag] Tag is not detected")
+            base = geometry_msgs.msg.Twist()
+            base.linear.x = 0.0
+            base.linear.z = 0.8 # 5.0 * (M_PI/180)
+            rospy.loginfo("[searchTag] Move to search")
+            self.vel_pub.publish(base)
         
-        rospy.sleep(3)
-        return
-    
-    
+        self.find_tag = False # switch oof the callback function findTag
 
-    def startFrontalDocking(self):
     
+    def watchTag(self):
+        self.startReadingAngle()
+        epsilon = 3
+
+        while abs((180/self.M_PI)*self.avg_docking_angle) > epsilon:
+            base = geometry_msgs.msg.Twist()
+            base.linear.x = 0
+            base.angular.z = 0.2 # 0.5 * (M_PI/180)
+            self.vel_pub.publish(base)
+            rospy.sleep(0.5)
+        
+        self.stopReadingAngle()
+    
+    def startReadingAngle(self):
+        self.start_avg = False
+        self.avg_pos.flush_array()
+        self.avg_dock.flush_array()
+        self.avg_yaw.flush_array()
+        self.avg_x.flush_array()
+        self.avg_y.flush_array()
+        self.start_avg = True
+        rospy.sleep(5)
+    
+    def stopReadingAngle(self):
+        self.start_avg = False
+
+    def adjusting(self):
+        rospy.loginfo("Adjusting position...")
+        self.startReadingAngle()
+        yaw = self.avg_yaw_angle
+        rospy.loginfo("Adjusting jaw {}".format(yaw))
+        self.stopReadingAngle()
+        self.move_angle(yaw)
+
+    def epsi(self):
+        return (self.M_PI/180)*40
+
+    
+    def positioning(self):
+        self.startReadingAngle()
+        a_pos_rad = self.avg_position_angle
+        a_pos_deg = (180/self.M_PI)*self.avg_position_angle
+
+        pos = geometry_msgs.msg.Vector3()
+        pos.x = self.avg_position_x
+        pos.y = self.avg_position_y
+        self.stopReadingAngle()
+
+        way = abs(math.sin(a_pos_rad) * math.sqrt(pos.x*pos.x + pos.y*pos.y))
+
+        if abs(a_pos_deg) < 10.0 or way < 0.08:
+            self.startReadingAngle()
+            self.docking()
+        else:
+            alpha_yaw = self.avg_yaw_angle
+            beta_rad = 0
+            if(a_pos_deg < 0.0):
+                beta_rad = ((self.M_PI/2)+alpha_yaw)
+                way = math.sin(a_pos_rad) *math.sqrt(pos.x*pos.x + pos.y*pos.y)
+                self.move_angle((-1)*beta_rad)
+        
+        #Drive in frontal position
+        # it must turn now
+        if (a_pos_deg > 0.0):
+            self.move_angle((-1)*self.M_PI/2)
+        else:
+            self.move_angle(self.M_PI/2)
+        
+        self.searchTag()
+        rospy.sleep(1)
+        self.adjusting()
+        rospy.sleep(1)
+
+        self.startReadingAngle()
+        a_pos_rad = abs(self.avg_position_angle)
+        self.stopReadingAngle()
+
+        a_pos_deg = abs(180/self.M_PI) * a_pos_rad
+
+        if a_pos_deg < 20.0:
+            if a_pos_deg > 10:
+                self.startReadingAngle()
+                rospy.sleep(1)
+                self.docking()
+            else:
+                self.startReadingAngle()
+                x = abs(self.avg_position_x)
+                epsilon = self.epsi()
+                phi = (self.M_PI/2) - epsilon
+                d = math.tan(phi) * abs(self.avg_position_y)
+                self.stopReadingAngle()
+
+                #chech whether the robot is away enough from the docking station
+
+                if(x-d > 0.10):
+                    self.linearApproach()
+                else:
+                    self.startReadingAngle()
+                    self.docking()
+        else:
+            rospy.loginfo("RESTART_POSITIONING")
+            self.positioning()
+
+
+    """
+    LINEAR APPROACH
+    """
+    def linearApproach(self):
+        self.adjusting()
+
+        pos = geometry_msgs.msg.Vector3()
+
+        alpha = self.avg_position_angle
+        pos.x = self.avg_position_x
+        pos.y = self.avg_position_y
+        self.stopReadingAngle()
+
+        alpha_deg = (180/self.M_PI)*alpha
+        epsilon_rad = self.epsi()
+        epsilon_deg = (180/self.M_PI)*epsilon_rad
+        e = abs(epsilon_rad)
+
+        beta = (self.M_PI/2) - epsilon_rad
+        d = 100*pos.y # in cm
+        way = math.sqrt((d*d) + 1 + (math.tan(beta)*math.tan(beta)))
+        way = way/100
+        
+        rospy.loginfo("[linearApproach] pos_angle={}".format(alpha_deg))
+        rospy.loginfo("[linearApproach] epsilon={}".format(epsilon_deg))
+        rospy.loginfo("[linearApproach] way={}".format(way))
+
+        if alpha < 0.0: # TURN RIGHT
+            rospy.loginfo("[linearApproach] Turning right with epsilon={}".format(epsilon_deg))
+            self.move_angle(-e)
+            self.drive_forward(way)
+            self.move_angle(e)
+        if alpha > 0.0: #TURN LEFT
+            rospy.loginfo("[linearApproach] Turning left with epsilon={}".format(epsilon_deg))
+            self.move_angle(e)
+            self.drive_forward(way)
+            self.move_angle(-e)
+        
+        self.adjusting()
+        
+        rospy.loginfo("[linearApproach] Start Docking!")
+        
+        self.startReadingAngle()
+        self.docking()
+
+    """
+    FRONTAL DOCKING
+    """
+    def startFrontalDocking(self):
         self.start_avg = False
         self.avg_pos.flush_array()
         self.avg_dock.flush_array()
         self.start_avg = True
         rospy.sleep(1)
         self.docking()
+
+    
+    """
+    DOCKING STAGE
+    """
+    def docking(self):
+        rospy.loginfo("Starting frontal docking...")
+        base = geometry_msgs.msg.Twist()
+        DELTA = 1.0
+
+        self.try_more = false
+        pos = geometry_msgs.msg.Vector3()
+        pos.x = self.avg_position_x
+        pos.y = self.avg_position_y
+        
+        alpha_deg = (180/self.M_PI)*self.avg_docking_angle
+
+        if alpha_deg > 15.0 and self.try_more:
+            rospy.logerr("[DOCKING] DOCKING WILL FAIL")
+            rospy.logerr("[DOCKING] RESTARTING THE POSITIONING...")
+            self.positioning()
+            return
+        else:
+            base.linear.x = 0.0
+            if alpha_deg > DELTA:
+                base.angular.z = 0.27 # slow but it works
+            elif alpha_deg < -DELTA:
+                base.angular.z = -0.27
+            else:
+                base.angular.z = 0
+            
+            if pos.x > 0.60:
+                base.linear.x = 0.08 # drive very slow
+            else:
+                base.linear.x = 0.03 # near enough drive even slower
+        
+        rospy.loginfo("[DOCKING] pos.x = {}".format(pos.x))
+
+        if(self.docking_status):
+            rospy.loginfo("[DOCKING] DOCKING IS SUCCESSFUL")
+            self.stopReadingAngle()
+            rospy.sleep(1)
+            return #DOCKING IS SUCCESSFUL
+        else:
+            if not self.bumper_pressed:
+                self.vel_pub.publish(base)
+                rospy.sleep(0.5)
+                self.docking()
+            else:
+                rospy.loginfo("[DOCKING] try one more...")
+                self.drive_backward(0.55)
+                self.adjusting()
+                self.startReadingAngle()
+                self.bumper_pressed = False
+                self.docking()
+    
+    def startDocking(self):
+        rospy.sleep(1)
+        self.searchTag()
+        self.watchTag()
+        rospy.sleep(2)
+        self.positioning()
+
+        self.adjusting()
+        rospy.sleep(2)
+        self.startReadingAngle()
+        self.docking()
+
 
 def main():
     tp = Docking()
