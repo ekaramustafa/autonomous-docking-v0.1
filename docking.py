@@ -73,6 +73,11 @@ class Docking():
         self.avg_y = avg(10)
         self.avg_yaw = avg(10)
 
+        self.avg_position_angle = 0.0
+        self.avg_docking_angle = 0.0
+        self.avg_position_x = 0
+        self.avg_position_y = 0
+        self.avg_yaw_angle = 0
 
         self.odom_pos = geometry_msgs.msg.Vector3()
 
@@ -107,33 +112,6 @@ class Docking():
         except Exception as ex:
             rospy.logerr(ex)  
             rospy.sleep(1.0)
-
-##########################################################################################################################################################################
-#INIT OF ANGLE AND ODOM_TRANSFORM WITH CALLBACKS
-
-    """
-    INIT OF ANGLE BY IMU DATA
-    """
-    def actual_angle(self,data):
-        quat = data.orientation
-        euler = self.get_euler(quat)
-        yaw = euler[2]
-        self.angle = yaw
-
-    """
-    INIT OF ODOM_TRANSFORM BY ODOM DATA
-    """
-    def get_odom_pos(self,data):
-
-        self.odom_pos.x = data.pose.pose.position.x
-        self.odom_pos.y = data.pose.pose.position.y
-
-        quaternion = geometry_msgs.msg.Quaternion(data.pose.pose.orientation.x,data.pose.pose.orientation.y,data.pose.pose.orientation.z,data.pose.pose.orientation.w)
-        pose = geometry_msgs.msg.Vector3(data.pose.pose.position.x,data.pose.pose.position.y,data.pose.pose.position.z)
-
-        self.odom_transform = geometry_msgs.msg.Transform(pose,quaternion)
-##########################################################################################################################################################################
-
 #DOCKING AND DIRECTION ANGLE CALCULATIONS
 
     """
@@ -148,11 +126,11 @@ class Docking():
             rospy.logerr(f"docking_angle() {e}")
             rospy.sleep(1)
         
-        tags_cor = self.getOrigin(transform)
+        tags_vec = tools.get_translation_vector(tools.get_transformation_matrix(transform))
         
-        map_tag_x = tags_cor[0]
-        map_tag_y = tags_cor[1]
-        map_tag_z = tags_cor[2]
+        map_tag_x = tags_vec.x
+        map_tag_y = tags_vec.y
+        map_tag_z = tags_vec.z
 
         return (map_tag_y/map_tag_x)  
     
@@ -171,9 +149,9 @@ class Docking():
             rospy.logerr(ex)
             rospy.sleep(1)
         
-        tags_cor = self.getOrigin(transform)
-        tag_x = tags_cor[0]
-        tag_y = tags_cor[1]
+        tags_vec = tools.get_translation_vector(tools.get_transformation_matrix(transform))
+        tag_x = tags_vec.x
+        tag_y = tags_vec.y
 
         wd_rad = math.atan2(tag_x/tag_y)
 
@@ -225,23 +203,47 @@ class Docking():
 
         pos = geometry_msgs.msg.Point()
 
-        pos_arr = tools.getOrigin(transform)
-        #pos_arr = self.getOrigin(transform)
-        pos.x = pos_arr[0]
+        pos_vec = tools.get_translation_vector(tools.get_transformation_matrix(transform))
+        pos.x = pos_vec.x
         
-        pos.y = pos_arr[2]
+        pos.y = pos_vec.z
 
         return pos
 ##########################################################################################################################################################################
     """
     CALLBACK FUNCTIONS
     """
-    
 
-    """
-    GETS THE AVERAGE POSITION
-    """
+#INIT OF ANGLE AND ODOM_TRANSFORM WITH CALLBACKS
+
+#FUNDAMENTAL FUNC
+    def actual_angle(self,data):
+        """
+        INIT OF ANGLE BY IMU DATA
+        """
+        quat = data.orientation
+        euler = self.get_euler(quat)
+        yaw = euler[2]
+        self.angle = yaw
+
+#FUNDAMENTAL FUNC
+    def get_odom_pos(self,data):
+        """
+        INIT OF ODOM_TRANSFORM BY ODOM DATA
+        """        
+        self.odom_pos.x = data.pose.pose.position.x
+        self.odom_pos.y = data.pose.pose.position.y
+
+        quaternion = geometry_msgs.msg.Quaternion(data.pose.pose.orientation.x,data.pose.pose.orientation.y,data.pose.pose.orientation.z,data.pose.pose.orientation.w)
+        pose = geometry_msgs.msg.Vector3(data.pose.pose.position.x,data.pose.pose.position.y,data.pose.pose.position.z)
+
+        self.odom_transform = geometry_msgs.msg.Transform(pose,quaternion)
+
+#FUNDAMENTAL FUNC
     def get_avg_position_angle_callback(self,data):
+        """
+        GETS THE AVERAGE POSITION
+        """
 
         #TEMP
         #if self.start_avg:
@@ -268,14 +270,52 @@ class Docking():
 
                 optical_tag_trans = geometry_msgs.msg.Transform(optical_tag_origin,optical_tag_quad)
 
-                tag_cam = tools.multiply_transform_objects()
+                tag_cam = tools.multiply_transforms(tools.get_inversed_transform_object(optical_tag_trans),self.transform_cam_base)
+                
+                tag_base = tools.multiply_transforms(tag_cam,self.transform_cam_base)
 
+                base_tag = tools.get_inverse_transform_object()
 
                 
-##########################################################################################################################################################################
+                cords_vec = tools.get_translation_vector(base_tag)
+                xx = cords_vec.x
+                yy = cords_vec.y
+                zz = cords_vec.z
+                yaw = tools.get_euler_angles(base_tag.rotation)[2]
+
+                if(abs(xx)<0.00001):
+                    rospy.logerr("Division through zero is not allowed! xx:{0},y::{1},z:{2}".format(xx,yy,zz))
+                
+                else:     
+                    alpha_dock = math.atan2(yy/xx)
+                    alpha_pos = alpha_dock - (M_PI/2 + yaw)
+                    
+                    if(math.isfinite(alpha_pos)):
+                        self.avg_pos.new_value(alpha_pos)
+                        self.avg_dock.new_value(alpha_dock)
+                        self.avg_x.new_value(z)
+                        self.avg_y.new_value(x)
+                        self.avg_yaw.new_value(yaw+ (M_PI/2))
+
+                        avg_pos_angle = self.avg_pos.avg()
+                        avg_dock_angle = self.avg_dock.avg()
+                        avg_yaw_angle = self.avg_yaw.avg()
+                        avg_position_x = self.avg_x.avg()
+                        avg_position_y = self.avg_y.avg()
+                        
+                        self.avg_position_angle = avg_pos_angle
+                        self.avg_docking_angle = avg_dock_angle
+                        self.avg_position_x = avg_position_x
+                        self.avg_position_y = avg_position_y
+                        self.avg_yaw_angle = avg_yaw_angle
+            
 ##########################################################################################################################################################################
 ##########################################################################################################################################################################
 
+#FUNDAMENTAL
+
+##########################################################################################################################################################################
+##########################################################################################################################################################################
 
     """
     DOCKING STAGE
