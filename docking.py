@@ -69,8 +69,8 @@ class Docking():
         #is a bool to start and stop findTag callback
         self.find_tag = False
         
-        #NEED MORE EXPLANATION
-        #actual_angle
+        #yaw angle from IMU sensor. The IMU is a built-in sensor that can
+        #measure the angle the robot has turned. 
         self.angle = 0
 
         #used in findTag callback
@@ -101,7 +101,7 @@ class Docking():
         ###
 
         ##ASK
-        self.M_PI = 0.0 #180 degrees, Pi
+        self.M_PI = 3.14159 #180 degrees, pi in radians i suppose
         ##ASK
 
         self.odom_pos = geometry_msgs.msg.Vector3()
@@ -185,7 +185,7 @@ class Docking():
         tag_x = tags_vec.x
         tag_y = tags_vec.y
 
-        wd_rad = math.atan2(tag_x/tag_y)
+        wd_rad = math.atan(tag_x/tag_y)
 
         return wd_rad
     
@@ -212,7 +212,6 @@ class Docking():
         yaw = euler_angles[2]
         
         
-        #ISSUE: M_PI ??
         return -(self.M_PI/2 + yaw)
     
 ##################################################################
@@ -223,17 +222,15 @@ class Docking():
     def findTag(self,data):
         if self.find_tag:  
             for i in range(len(data.detections)):
-                tag_id = data.detections[i].id
+                tag_id, = data.detections[i].id
 
-                if self.tag_id == tag_id:
+                if self.tag_id == "tag_{}".format(tag_id):
                     X = rospy.Duration(2.0)
                     time = data.detections[i].pose.header.stamp
                     now = rospy.Time.now()
                     age = now-time
 
                     if X > age:
-                        secs = rospy.Duration.to_sec(age)
-
                         self.TAG_AVAILABLE = True
 
 
@@ -243,7 +240,7 @@ class Docking():
         INIT OF ANGLE BY IMU DATA
         """
         quat = data.orientation
-        euler = self.get_euler(quat)
+        euler = tools.get_euler_angles(quat)
         yaw = euler[2]
         self.angle = yaw
 
@@ -277,16 +274,20 @@ class Docking():
                 y = point.y
                 z = point.z
                 
+                #opticalFrame -> tagFrame
                 optical_tag_origin = geometry_msgs.msg.Vector3(x,y,z)
 
                 optical_tag_quad = geometry_msgs.msg.Quaternion(p.orientation.x,p.orientation.y,p.orientation.z,p.orientation.w)
 
                 optical_tag_trans = geometry_msgs.msg.Transform(optical_tag_origin,optical_tag_quad)
+                ##
 
-                tag_cam = tools.multiply_transforms(tools.get_inversed_transform_object(optical_tag_trans),self.transform_cam_base)
+                #tag -> cam = (opticalFrame->tagFrame)^(-1) * (opticalFrame->cam)  
+                tag_cam = tools.multiply_transforms(tools.get_inverse_transform_object(optical_tag_trans),self.transform_optical_cam)
                 
+                #tag -> base = (tag -> cam)* (cam->base)
                 tag_base = tools.multiply_transforms(tag_cam,self.transform_cam_base)
-
+                #base -> tag = (tag -> base)^(-1)
                 base_tag = tools.get_inverse_transform_object(tag_base)
 
                 
@@ -300,7 +301,7 @@ class Docking():
                     rospy.logerr("Division through zero is not allowed! xx:{0},y::{1},z:{2}".format(xx,yy,zz))
                 
                 else:     
-                    alpha_dock = math.atan2(yy/xx)
+                    alpha_dock = math.atan(yy/xx)
                     alpha_pos = alpha_dock - (self.M_PI/2 + yaw)
                     
                     if(math.isfinite(alpha_pos)):
@@ -328,7 +329,8 @@ class Docking():
 
 #FUNDAMENTAL FUNC
     def drive_forward(self,distance):
-        rospy.loginfo("Start to move forward...")
+        rospy.loginfo("[DRIVE_FORWARD] Start to move forward...")
+        
         #-0.055 is a magic offset to drive exact distances  
         distance = distance - 0.055
 
@@ -366,42 +368,46 @@ class Docking():
 
 #FUNDAMENTAL FUNC
     def drive_backward(self,distance):
+        rospy.loginfo("[DRIVE_BACKWARDS]")
         self.drive_forward(-distance)
 
 #FUNDAMENATAL FUNC
     def move_angle(self,alpha_rad):
         if alpha_rad != 0.0:
-            turn_veloctiy = 0.5
-            DT = abs(0.1/turn_veloctiy)
+            turn_veloctiy = 0.5 #we give
+            DT = abs(0.1/turn_veloctiy) #dt
             goal_angle = self.angle + alpha_rad
             N = abs(goal_angle/self.M_PI)
             rest = abs(goal_angle - N*self.M_PI)
-
+            
+            #This is necessary because the imu is between -180 - 180
             if rest > 0 and N>0:
                 goal_angle = -self.M_PI + rest if goal_angle > self.M_PI else goal_angle
                 goal_angle = self.M_PI - rest if goal_angle< -self.M_PI else goal_angle
 
 
-                rad_velocity = (-1)*turn_veloctiy if alpha_rad < 0 else turn_veloctiy
-                weiter = True
-                alpha_old = 0
-                alpha_new = self.angle
+            rad_velocity = (-1)*turn_veloctiy if alpha_rad < 0 else turn_veloctiy
+            weiter = True
 
-                while weiter:
-                    base = geometry_msgs.msg.Twist()
-                    base.linear.x = 0
-                    base.angular.z = rad_velocity
-                    self.vel_pub.publish(base)
-
-                    rospy.sleep(DT)
-                    epsilon = goal_angle - self.angle
-                    epsilon = abs(epsilon)
-                    weiter = epsilon > 0.1
-    
+            while weiter:
+                base = geometry_msgs.msg.Twist()
+                base.linear.x = 0
+                base.angular.z = rad_velocity
+                self.vel_pub.publish(base)
+                #sleep amount of dt since the number of sent TwistMessages causes node to crash
+                rospy.sleep(DT)
+                #whether goal_angle and self.angle close enough each other 
+                epsilon = goal_angle - self.angle
+                epsilon = abs(epsilon)
+                weiter = epsilon > 0.1
+##################################################################
+################## TAG DETECTION RELATED #########################
+##################################################################    
     def watchTag(self):
-        self.startReadingAngle()
+        self.startReadingAngle()#enables avg_position_angle_callback
         epsilon = 3
 
+        #rotating the robot so that it looks towards the docking station directly
         while abs((180/self.M_PI)*self.avg_docking_angle) > epsilon:
             base = geometry_msgs.msg.Twist()
             base.linear.x = 0
@@ -409,11 +415,8 @@ class Docking():
             self.vel_pub.publish(base)
             rospy.sleep(0.5)
         
-        self.stopReadingAngle()
+        self.stopReadingAngle()#disable avg_position_angle_callback
 
-##################################################################
-################## MOVEMENT FUNCTIONS ############################
-##################################################################
     def searchTag(self):
         rospy.loginfo("[searchTag] Searching Tag...")
         self.find_tag = True # triggers to findTag() callback function
@@ -427,8 +430,10 @@ class Docking():
             rospy.loginfo("[searchTag] Move to search")
             self.vel_pub.publish(base)
         
-        self.find_tag = False # switch oof the callback function findTag
-    
+        self.find_tag = False # switch off the callback function findTag
+##################################################################
+###################### TOOL FUNCTIONS ############################
+##################################################################    
 #TOOL FUNC
     def epsi(self):
         return (self.M_PI/180)*40
@@ -448,10 +453,10 @@ class Docking():
         self.start_avg = False
 
     def adjusting(self):
-        rospy.loginfo("Adjusting position...")
+        rospy.loginfo("[ADJUSTING] Adjusting position...")
         self.startReadingAngle()
         yaw = self.avg_yaw_angle
-        rospy.loginfo("Adjusting jaw {}".format(yaw))
+        rospy.loginfo("[ADJUSTING] Adjusting yaw {}".format(yaw))
         self.stopReadingAngle()
         self.move_angle(yaw)
 
@@ -503,7 +508,7 @@ class Docking():
         a_pos_deg = abs(180/self.M_PI) * a_pos_rad
 
         if a_pos_deg < 20.0:
-            if a_pos_deg > 10:
+            if a_pos_deg < 10:
                 self.startReadingAngle()
                 rospy.sleep(1)
                 self.docking()
@@ -547,7 +552,7 @@ class Docking():
 
         beta = (self.M_PI/2) - epsilon_rad
         d = 100*pos.y # in cm
-        way = math.sqMOVEMENT
+        way = math.sqrt((d*d)+(1+ math.tan(beta)*math.tan(beta)))
         rospy.loginfo("[linearApproach] pos_angle={}".format(alpha_deg))
         rospy.loginfo("[linearApproach] epsilon={}".format(epsilon_deg))
         rospy.loginfo("[linearApproach] way={}".format(way))
@@ -641,14 +646,19 @@ class Docking():
     def startDocking(self):
         rospy.sleep(1)
         self.searchTag()
+        rospy.loginfo("[START_DOCKING] after searchTag()")
         self.watchTag()
+        rospy.loginfo("[START_DOCKING] after watchTag()")
         rospy.sleep(2)
         self.positioning()
+        rospy.loginfo("[START_DOCKING] after positioning()")
 
         self.adjusting()
+        rospy.loginfo("[START_DOCKING] after adjusting()")
         rospy.sleep(2)
         self.startReadingAngle()
         self.docking()
+        rospy.loginfo("[START_DOCKING] after docking()")
         
         #TAKES 5 SECS TO REACH self.docking()
 
