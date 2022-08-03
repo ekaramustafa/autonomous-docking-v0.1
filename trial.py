@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import math
 import numpy 
 from matplotlib.contour import QuadContourSet

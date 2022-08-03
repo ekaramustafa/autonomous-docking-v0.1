@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 
 class avg:
@@ -13,7 +13,7 @@ class avg:
         self.avg_values = []
 
         for i in range(self.MESS):
-            self.avg_values[i] = 0.0
+            self.avg_values.append(0.0)
 
 
     def new_value(self,value):
@@ -29,15 +29,15 @@ class avg:
             new_values = []
 
             for i in range(self.MESS):
-                new_values[i] = 0
+                new_values.append(0)
 
-            for j in range(self.MESS):
-                new_values[i-1]=self.avg_values[i]
+            for j in range(1,self.MESS):
+                new_values[j-1]=self.avg_values[j]
 
             new_values[self.MESS-1]=value
 
             for k in range(self.MESS):
-                self.avg_values[i] = new_values[i]
+                self.avg_values[k] = new_values[k]
             
             self.avg_sum+=value
 
