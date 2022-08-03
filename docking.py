@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 import math
 
-from sqlalchemy import false
-
 import avg
 import rospy
 import geometry_msgs.msg
@@ -34,6 +32,9 @@ class Docking():
 
         #odom_sub is to get /odom frame
         self.odom_sub = rospy.Subscriber("odom",nav_msgs.msg.Odometry,self.get_odom_pos)
+
+        #battery sub
+        self.batter_info_sub = rospy.Subscriber()
         
         #TF listener to listen frames
         self.tf_listener = tf.TransformListener()
@@ -223,7 +224,7 @@ class Docking():
         if self.find_tag:  
             for i in range(len(data.detections)):
                 tag_id, = data.detections[i].id
-
+                #should check hz 
                 if self.tag_id == "tag_{}".format(tag_id):
                     X = rospy.Duration(2.0)
                     time = data.detections[i].pose.header.stamp
@@ -405,7 +406,7 @@ class Docking():
 ##################################################################    
     def watchTag(self):
         self.startReadingAngle()#enables avg_position_angle_callback
-        epsilon = 3
+        epsilon = 3 # in degrees, threshold angle
 
         #rotating the robot so that it looks towards the docking station directly
         while abs((180/self.M_PI)*self.avg_docking_angle) > epsilon:
@@ -413,6 +414,7 @@ class Docking():
             base.linear.x = 0
             base.angular.z = 0.2 # 0.5 * (M_PI/180)
             self.vel_pub.publish(base)
+            # should check hz
             rospy.sleep(0.5)
         
         self.stopReadingAngle()#disable avg_position_angle_callback
@@ -553,6 +555,7 @@ class Docking():
         beta = (self.M_PI/2) - epsilon_rad
         d = 100*pos.y # in cm
         way = math.sqrt((d*d)+(1+ math.tan(beta)*math.tan(beta)))
+
         rospy.loginfo("[linearApproach] pos_angle={}".format(alpha_deg))
         rospy.loginfo("[linearApproach] epsilon={}".format(epsilon_deg))
         rospy.loginfo("[linearApproach] way={}".format(way))
@@ -596,7 +599,7 @@ class Docking():
         base = geometry_msgs.msg.Twist()
         DELTA = 1.0
 
-        self.try_more = false
+        self.try_more = False
         pos = geometry_msgs.msg.Vector3()
         pos.x = self.avg_position_x
         pos.y = self.avg_position_y
