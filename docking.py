@@ -8,7 +8,6 @@ import nav_msgs.msg
 import apriltag_ros.msg
 import tf
 from sensor_msgs.msg import Imu
-from tf import transformations as t
 import tools
 
 #TO-DO
@@ -26,16 +25,10 @@ class Docking():
 
         rospy.loginfo("DOCKING INIT")
         rospy.sleep(5) #in source code, its purpose is said to be for waiting for the AprilTagDetectionNode
-
-
         
         #TF listener to listen frames
         self.tf_listener = tf.TransformListener()
         
-        """
-        MODIFY FRAME NAMES
-        """
-        #Links and Transforms #NEEDS TO BE CHANGED AT END
         self.base_link = "base_link"
         self.camera_link = "camera_link"
         self.optical_frame = "camera_color_optical_frame"
@@ -55,10 +48,10 @@ class Docking():
 
         #init of links
         self.get_cameraLink_baseLink()
-        rospy.loginfo("CameraLink -> baseLink")
+        rospy.loginfo("[INIT] CameraLink -> baseLink")
         rospy.sleep(1)
         self.get_optical_frame()
-        rospy.loginfo("optical -> camera")
+        rospy.loginfo("[INIT] optical -> camera")
         rospy.sleep(1)
 
         #is a bool to start and stop get_avg_position_callback
@@ -80,7 +73,7 @@ class Docking():
         #Average of several vars
         #NEED MORE EXPLANATION
         #params
-        rospy.loginfo("avg inits")
+        rospy.loginfo("[INIT] avg inits")
         self.avg_pos = avg(10)
         self.avg_dock = avg(2)
         self.avg_x = avg(10)
@@ -124,7 +117,7 @@ class Docking():
         #self.batter_info_sub = rospy.Subscriber()
         
         rospy.sleep(1)
-        rospy.loginfo("Start Docking Process")
+        rospy.loginfo("[INIT] Start Docking Process")
         self.startDocking()
 
 ##################################################################
@@ -304,7 +297,7 @@ class Docking():
         """
         GETS THE AVERAGE POSITION
         """
-        rospy.loginfo("get_avg_position_angle callback")
+        rospy.loginfo("[AVG_POSITION_ANGLE] get_avg_position_angle callback")
         if self.start_avg:
             for i in range(len(data.detections)):
                 id, = data.detections[i].id
@@ -320,7 +313,7 @@ class Docking():
                     y = point.y
                     z = point.z
                     rospy.sleep(1)
-                    rospy.loginfo("opticalFrame -> tagFrame")
+                    rospy.loginfo("[AVG_POSITION_ANGLE] opticalFrame -> tagFrame")
 
                     #opticalFrame -> tagFrame
                     optical_tag_origin = geometry_msgs.msg.Vector3(x,y,z)
@@ -333,24 +326,24 @@ class Docking():
 
                     rospy.sleep(1)
 
-                    rospy.loginfo("tag->cam")
+                    rospy.loginfo("[AVG_POSITION_ANGLE] tag->cam")
 
                     #tag -> cam = (optical->tag)^(-1) * (optical->cam)  
                     tag_cam = tools.multiply_transforms(tools.get_inverse_transform_object(optical_tag_trans),self.transform_optical_cam)
                     
                     rospy.sleep(1)
-                    rospy.loginfo("tag->base")
+                    rospy.loginfo("[AVG_POSITION_ANGLE] tag->base")
 
                     #tag -> base = (tag -> cam)* (cam->base)
                     tag_base = tools.multiply_transforms(tag_cam,self.transform_cam_base)
                     rospy.sleep(1)
-                    rospy.loginfo("base->tag")
+                    rospy.loginfo("[AVG_POSITION_ANGLE] base->tag")
 
                     #base -> tag = (tag -> base)^(-1)
                     base_tag = tools.get_inverse_transform_object(tag_base)
 
                     rospy.sleep(1)
-                    rospy.loginfo("cords_vec")
+                    rospy.loginfo("[AVG_POSITION_ANGLE] cords_vec")
 
                     cords_vec = tools.get_translation_vector(tools.get_transformation_matrix(base_tag))
                     xx = cords_vec.x
@@ -359,10 +352,10 @@ class Docking():
                     yaw = tools.get_euler_angles(base_tag.rotation)[2]
                     
                     rospy.sleep(1)
-                    rospy.loginfo("Calculations with average_poses")
+                    rospy.loginfo("[AVG_POSITION_ANGLE] Calculations with average_poses")
 
                     if(abs(xx)<0.00001):
-                        rospy.logerr("Division through zero is not allowed! xx:{0},y::{1},z:{2}".format(xx,yy,zz))
+                        rospy.logerr("[AVG_POSITION_ANGLE] Division through zero is not allowed! xx:{0},y::{1},z:{2}".format(xx,yy,zz))
                     
                     else:     
                         alpha_dock = math.atan(yy/xx)
@@ -387,7 +380,7 @@ class Docking():
                             self.avg_position_y = avg_position_y
                             self.avg_yaw_angle = avg_yaw_angle
                 else:
-                    print("tag_{} not detected".format(id))
+                    print("[AVG_POSITION_ANGLE] tag_{} not detected".format(id))
                     return
                 
                 
@@ -427,7 +420,7 @@ class Docking():
             driven_y = pos_now.y - startPos.y
             goal = direction * math.sqrt(driven_x*driven_x + driven_y*driven_y) 
             
-            rospy.loginfo("The driven distance is {}".format(goal))
+            rospy.loginfo("[DRIVE_FORWARD] The driven distance is {}".format(goal))
 
             rospy.sleep(0.3)
 
@@ -675,7 +668,7 @@ class Docking():
     DOCKING STAGE
     """
     def docking(self):
-        rospy.loginfo("Starting frontal docking...")
+        rospy.loginfo("[DOCKING] Starting frontal docking...")
         base = geometry_msgs.msg.Twist()
         DELTA = 1.0
 
