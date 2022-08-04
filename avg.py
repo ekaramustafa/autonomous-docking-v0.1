@@ -13,12 +13,13 @@ class avg:
         self.avg_values = []
 
         for i in range(self.MESS):
-            self.avg_values.append(0.0)
+            self.avg_values.append(0)
 
 
     def new_value(self,value):
+        self.avg_sum = 0
 
-        if self.avg_counter < self.MESS:
+        if self.avg_counter+1 < self.MESS:
             self.avg_counter+=1
             self.avg_values[self.avg_counter] = value
             self.avg_sum += value
