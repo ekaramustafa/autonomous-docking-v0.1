@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-
-
 class avg:
 
     def __init__(self,_MESS):
@@ -17,9 +15,9 @@ class avg:
 
 
     def new_value(self,value):
+        self.avg_sum = 0
 
-        if self.avg_counter < self.MESS:
-            self.avg_values[self.avg_counter+1] = value
+        if self.avg_counter+1 < self.MESS:
             self.avg_counter+=1
             self.avg_sum += value
         
@@ -27,10 +25,8 @@ class avg:
             self.avg_sum +=self.avg_values[0]
 
             new_values = []
-            #[0,0]
             for i in range(self.MESS):
                 new_values.append(0)
-            #[]
             for j in range(1,self.MESS):
                 new_values[j-1]=self.avg_values[j]
 
