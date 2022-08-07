@@ -13,8 +13,6 @@ import math
 #TO-DO
 #Battery-sub callback
 #Debug
-##Start with syntax errors
-##Then check if the calculations are correct
 
 class Docking():
 
@@ -93,9 +91,9 @@ class Docking():
         self.bumper_pressed = False
         ###
 
-        ##ASK
+
         self.M_PI = math.pi #180 degrees, pi in radians i suppose
-        ##ASK
+
 
         self.odom_pos = geometry_msgs.msg.Vector3()
 
@@ -104,6 +102,8 @@ class Docking():
         self.tag_sub = rospy.Subscriber("tag_detections",apriltag_ros.msg.AprilTagDetectionArray,self.get_avg_position_angle_callback)  
 
         #imu_sub is to get IMU data to calculate actual_angle
+        #camera/gyro/sample => angular velocity
+        #camera/accel/sample => linear velocity
         self.imu_sub = rospy.Subscriber("camera/gyro/sample",Imu,self.actual_angle)
 
         #find_tag_sub is to search for specific tag_id 
@@ -556,7 +556,7 @@ class Docking():
                 beta_rad = ((self.M_PI/2)+alpha_yaw)
                 way = math.sin(a_pos_rad) *math.sqrt(pos.x*pos.x + pos.y*pos.y)
                 rospy.loginfo("Entering move_angle")
-                self.move_angle(beta_rad)
+                self.move_angle((-1)*beta_rad)
                 
         rospy.loginfo("[POSITIONING] Robot should drive in frontal position")
         self.drive_forward(abs(way))
