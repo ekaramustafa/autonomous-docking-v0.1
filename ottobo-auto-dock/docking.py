@@ -11,10 +11,6 @@ from sensor_msgs.msg import Imu
 import tools
 import math
 #TO-DO
-#Battery-sub callback
-#Debug
-##Start with syntax errors
-##Then check if the calculations are correct
 
 class Docking():
 
@@ -364,7 +360,7 @@ class Docking():
                             self.avg_dock.new_value(alpha_dock)
                             self.avg_x.new_value(z)
                             self.avg_y.new_value(x)
-                            self.avg_yaw.new_value(yaw + (self.M_PI/2))
+                            self.avg_yaw.new_value(ya/w + (self.M_PI/2))
 
                             avg_pos_angle = self.avg_pos.avg()
                             avg_dock_angle = self.avg_dock.avg()
@@ -437,74 +433,33 @@ class Docking():
     def move_angle(self,alpha_rad):
         if alpha_rad != 0.0:
             turn_veloctiy = 0.5 
+            
             DT = abs(2/turn_veloctiy) #dt
-            
-            #goal_angle = self.angle + alpha_rad
-            goal_angle = self.angle + alpha_rad
-            rospy.loginfo("goal_angle = {0}".format(goal_angle))
-            N = abs(goal_angle/self.M_PI)
-            rest = abs(goal_angle - N*self.M_PI)
-            
-            #This is necessary because the imu is between -180 - 180
-            if rest > 0 and N>0:
-                rospy.loginfo("rest: {0}, N: {1}".format(rest,N))
-                goal_angle = -self.M_PI + rest if goal_angle > self.M_PI else goal_angle
-                goal_angle = self.M_PI - rest if goal_angle < -self.M_PI else goal_angle
-            
+                    
             rad_velocity = (-1)*turn_veloctiy if alpha_rad < 0 else turn_veloctiy
-            weiter = True
+            
+            #goal_angle = self.angle + alpha_rad  
+            goal_angle = abs(alpha_rad)
+            rospy.loginfo("goal_angle = {0}".format(goal_angle))
+
+            waiter = True
 	    
             initial_yaw = self.angle
-            while weiter:
+
+            while waiter:
                 base = geometry_msgs.msg.Twist()
                 base.linear.x = 0
                 base.angular.z = rad_velocity*0.2
                 self.vel_pub.publish(base)
                 
-                #sleep amount of dt since the number of sent TwistMessages causes node to crash
-                #whether goal_angle and self.angle close enough each other 
-
-                epsilon = goal_angle - (initial_yaw - self.angle)
+                epsilon = goal_angle - abs(initial_yaw - self.angle)
                 epsilon = abs(epsilon)
-                rospy.loginfo("{0} - {1} = {2}".format(goal_angle,self.angle,epsilon))
-                weiter = epsilon > 0.1
+                
+                rospy.loginfo("{0} - {1} = {2}".format(goal_angle,initial_yaw - self.angle,epsilon))
+                waiter = epsilon > 0.1
+                
                 rospy.sleep(DT)
-
-    def move_angle(self,alpha_rad):
-        if alpha_rad != 0.0:
-            turn_veloctiy = 0.5 
-            DT = abs(2/turn_veloctiy) #dt
-            
-            #goal_angle = self.angle + alpha_rad
-            goal_angle = self.angle + alpha_rad
-            rospy.loginfo("goal_angle = {0}".format(goal_angle))
-            N = abs(goal_angle/self.M_PI)
-            rest = abs(goal_angle - N*self.M_PI)
-            
-            #This is necessary because the imu is between -180 - 180
-            if rest > 0 and N>0:
-                rospy.loginfo("rest: {0}, N: {1}".format(rest,N))
-                goal_angle = -self.M_PI + rest if goal_angle > self.M_PI else goal_angle
-                goal_angle = self.M_PI - rest if goal_angle < -self.M_PI else goal_angle
-            
-            rad_velocity = (-1)*turn_veloctiy if alpha_rad < 0 else turn_veloctiy
-            weiter = True
-	    
-            while weiter:
-                base = geometry_msgs.msg.Twist()
-                base.linear.x = 0
-                base.angular.z = rad_velocity*0.2
-                self.vel_pub.publish(base)
-                #sleep amount of dt since the number of sent TwistMessages causes node to crash
-                #whether goal_angle and self.angle close enough each other 
-                if self.angle > 0:
-                    goal_angle = goal_angle - self.angle
-                else:
-                    goal_angle = goal_angle + self.angle
-                epsilon = abs(goal_angle)
-                rospy.loginfo("{0} - {1} = {2}".format(goal_angle,self.angle,epsilon))
-                weiter = epsilon > 0.1
-                rospy.sleep(DT)
+            rospy.loginfo("move_angle func is finished")
 
 ##################################################################
 ################## TAG DETECTION RELATED #########################
@@ -566,7 +521,7 @@ class Docking():
     def positioning(self):
         self.startReadingAngle()
         a_pos_rad = self.avg_position_angle
-        a_pos_deg = (180/self.M_PI)*self.avg_position_angle
+        a_pos_deg = self.avg_position_angle *(180/self.M_PI)
 
         pos = geometry_msgs.msg.Vector3()
         pos.x = self.avg_position_x
@@ -578,17 +533,10 @@ class Docking():
 	
         way = abs(math.sin(a_pos_rad) * math.sqrt(pos.x*pos.x + pos.y*pos.y))
         rospy.loginfo("way = {}".format(way))
-	
-	#very close 
-        #if abs(a_pos_deg) < 10.0 or way < 0.08:
-            #rospy.loginfo("[POSITIONING] Start frontal docking without positioning")
-            #rospy.loginfo("Angle {}".format(self.avg_position_angle))
-            #self.startReadingAngle()
-            #self.docking()
-        
-        if abs(a_pos_deg) < 10.0:
+
+        rospy.loginfo("avg_position_angle: {}".format((self.avg_position_angle)*(180/self.M_PI)))
+        if abs(a_pos_deg) < 5:
             rospy.loginfo("[POSITIONING] Start frontal docking without positioning")
-            rospy.loginfo("Angle {}".format(self.avg_position_angle))
             self.startReadingAngle()
             #self.docking()
           
@@ -596,32 +544,34 @@ class Docking():
             rospy.loginfo("Robot should rotate")
             alpha_yaw = self.avg_yaw_angle
             beta_rad = 0
-            if(a_pos_deg < 0.0):
+            if a_pos_deg < 0.0:
+                rospy.loginfo("Turning right")
                 beta_rad = ((self.M_PI/2)+alpha_yaw)
                 way = math.sin(a_pos_rad) *math.sqrt(pos.x*pos.x + pos.y*pos.y)
                 rospy.loginfo("Entering move_angle")
+                self.move_angle((-1)*beta_rad)
+            else:
+                rospy.loginfo("Turning left")
+                beta_rad = ((self.M_PI/2)-alpha_yaw)
+                way = math.sin(a_pos_rad) *math.sqrt(pos.x*pos.x + pos.y*pos.y)
                 self.move_angle(beta_rad)
-        #
-        beta_rad = 0
-        alpha_yaw = self.avg_yaw_angle
-        beta_rad = ((self.M_PI/2)+alpha_yaw)
-        way = math.sin(a_pos_rad) *math.sqrt(pos.x*pos.x + pos.y*pos.y)
-        rospy.loginfo("Entering move_angle")
-        self.move_angle(beta_rad)
-        #
+
         """      
         rospy.loginfo("[POSITIONING] Robot should drive in frontal position")
         self.drive_forward(abs(way))
 
+        #
         rospy.loginfo("[POSITIONING] Robot should turn now")
         if (a_pos_deg > 0.00000):
             self.move_angle((-1)*self.M_PI/2)
         else:
             self.move_angle(self.M_PI/2)
+        #
         
-        
+        rospy.loginfo("Search the tag again")
         self.searchTag()
         rospy.sleep(1)
+        rospy.loginfo("Adjusting")
         self.adjusting()
         rospy.sleep(1)
 
@@ -629,7 +579,7 @@ class Docking():
         a_pos_rad = abs(self.avg_position_angle)
         self.stopReadingAngle()
 
-        a_pos_deg = abs(180/self.M_PI) * a_pos_rad
+        a_pos_deg = abs(180/self.M_PI * a_pos_rad)
 
         if a_pos_deg < 20.0:
             if a_pos_deg < 10:
