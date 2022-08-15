@@ -166,11 +166,13 @@ class Docking():
     def docking_angle(self):
 
         transform = geometry_msgs.msg.Transform()
+        
         try:
             pos, quad = self.tf_listener.lookupTransform(self.base_link,self.tag_id,rospy.Time(0))
             pos_obj = geometry_msgs.msg.Vector3(pos[0],pos[1],pos[2])
             quad_obj = geometry_msgs.msg.Quaternion(quad[0],quad[1],quad[2],quad[3])
             transform = geometry_msgs.msg.Transform(pos_obj,quad_obj)
+        
         except Exception as e:
             rospy.logerr(f"docking_angle() {e}")
             rospy.sleep(1)
@@ -352,15 +354,23 @@ class Docking():
                     else: 
 
                         alpha_dock = math.atan(yy/xx)
-
+                        #not sure
                         alpha_pos = alpha_dock - (self.M_PI/2 + yaw)
+                        #could be just
+                        #alpha_pos = alpha_dock - yaw
+
 
                         if(math.isfinite(alpha_pos)):
                             self.avg_pos.new_value(alpha_pos)
                             self.avg_dock.new_value(alpha_dock)
+                            
+                            #check avg_x & avg_y values
+                            # self.avg_x.new_value(x)
+                            # self.avg_y.new_value(y)
+
                             self.avg_x.new_value(z)
                             self.avg_y.new_value(x)
-                            self.avg_yaw.new_value(ya/w + (self.M_PI/2))
+                            self.avg_yaw.new_value(yaw + (self.M_PI/2))
 
                             avg_pos_angle = self.avg_pos.avg()
                             avg_dock_angle = self.avg_dock.avg()
@@ -372,10 +382,11 @@ class Docking():
                             self.avg_position_angle = avg_pos_angle
                             self.avg_docking_angle = avg_dock_angle
                             
-                            
                             self.avg_position_x = avg_position_x
                             self.avg_position_y = avg_position_y
                             self.avg_yaw_angle = avg_yaw_angle
+                            #in case values accumulate
+                            #rospy.sleep(0.1)
                 else:
                     print("[AVG_POSITION_ANGLE] tag_{} not detected".format(id))
                     return
@@ -433,12 +444,9 @@ class Docking():
     def move_angle(self,alpha_rad):
         if alpha_rad != 0.0:
             turn_veloctiy = 0.5 
-            
-            DT = abs(2/turn_veloctiy) #dt
-                    
+                                
             rad_velocity = (-1)*turn_veloctiy if alpha_rad < 0 else turn_veloctiy
             
-            #goal_angle = self.angle + alpha_rad  
             goal_angle = abs(alpha_rad)
             rospy.loginfo("goal_angle = {0}".format(goal_angle))
 
@@ -458,7 +466,7 @@ class Docking():
                 rospy.loginfo("{0} - {1} = {2}".format(goal_angle,initial_yaw - self.angle,epsilon))
                 waiter = epsilon > 0.1
                 
-                rospy.sleep(DT)
+                rospy.sleep(0.2)
             rospy.loginfo("move_angle func is finished")
 
 ##################################################################
@@ -721,6 +729,29 @@ class Docking():
                 self.startReadingAngle()
                 self.bumper_pressed = False
                 self.docking()
+    
+    def demo(self):
+        self.startReadingAngle()
+        epsilon = 3
+        while (abs(180/self.M_PI)*self.avg_docking_angle) > epsilon:
+            base = geometry_msgs.msg.Twist()
+            base.linear.x = 0
+            base.angular.z = 0.2
+            self.vel_pub.publish(base)
+            rospy.sleep(0.5)
+            rospy.loginfo("[DEMO-1], CHECK ==> self.avg_position_angle : {}".format(self.avg_position_angle))
+            print()
+        
+        self.stopReadingAngle()
+
+    def demo(self):
+        self.startReadingAngle()
+        self.stopReadingAngle()
+        rospy.loginfo("[DEMO-2] ==> self.avg_position_angle : {}".format(self.avg_position_angle))
+        #self.move_angle(self.avg_position_angle)
+        #or
+        #self.move_angle(self.avg_docking_angle)
+
 
 #MAIN FUNC 0-STARTER
     def startDocking(self):
@@ -728,7 +759,11 @@ class Docking():
         self.searchTag()
         rospy.loginfo("[START_DOCKING] after searchTag()")
         rospy.sleep(0.5)
+        rospy.loginfo("DEMO STARTS")
+        self.demo()
+        rospy.loginfo("DEMO FINISHED")
 
+        """"
         rospy.loginfo("[POSITIONING] Starting...")
         self.positioning()
         rospy.loginfo("[START_DOCKING] after positioning()")
@@ -741,6 +776,8 @@ class Docking():
         #rospy.loginfo("[START_DOCKING] after docking()")
         
         #TAKES 5 SECS TO REACH self.docking()
+
+        """
 
 
 def main():

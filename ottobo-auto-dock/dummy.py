@@ -10,7 +10,7 @@ class IMU():
 
     def __init__(self):
         rospy.init_node("IMU Reciever")
-        self.imu_sub = rospy.Subscriber("camera/imu",Imu,self.callback)
+        self.imu_sub = rospy.Subscriber("imu/data",Imu,self.callback)
         self.vel_pub = rospy.Publisher("cmd_vel",geometry_msgs.msg.Twist,queue_size=10)
 
 

@@ -61,7 +61,7 @@ Visualization Manager:
       Frames:
         All Enabled: false
         base_link:
-          Value: true
+          Value: false
         camera_accel_frame:
           Value: false
         camera_accel_optical_frame:
@@ -133,7 +133,7 @@ Visualization Manager:
   Global Options:
     Background Color: 48; 48; 48
     Default Light: true
-    Fixed Frame: base_link
+    Fixed Frame: camera_link
     Frame Rate: 30
   Name: root
   Tools:
@@ -157,7 +157,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 1.8044626712799072
+      Distance: 0.6747379302978516
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
