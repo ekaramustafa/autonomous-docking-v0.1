@@ -20,8 +20,8 @@ class IMU():
         euler = tools.get_euler_angles(quat) 
         yaw = euler[2]
 
-        if yaw < 0:
-            yaw += 2*math.pi
+        # if yaw < 0:
+        #      yaw += 2*math.pi
         
         rospy.loginfo("Yaw angle: {}".format(yaw*(180/math.pi)))
         
