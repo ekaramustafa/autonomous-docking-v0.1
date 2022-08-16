@@ -444,8 +444,10 @@ class Docking():
     def move_angle(self,alpha_rad):
         if alpha_rad != 0.0:
             turn_veloctiy = 0.5 
-                                
-            rad_velocity = (-1)*turn_veloctiy if alpha_rad < 0 else turn_veloctiy
+            if alpha_rad < 0:
+                rad_velocity = (-1)*turn_veloctiy
+            else:
+                rad_velocity = turn_veloctiy
             
             goal_angle = abs(alpha_rad)
             rospy.loginfo("goal_angle = {0}".format(goal_angle))
@@ -733,10 +735,15 @@ class Docking():
     def demo(self):
         self.startReadingAngle()
         epsilon = 3
+        angular_velocity = 0.2
+
+        if self.avg_docking_angle < 0:
+            angular_velocity = angular_velocity * -1
+
         while (abs(180/self.M_PI)*self.avg_docking_angle) > epsilon:
             base = geometry_msgs.msg.Twist()
             base.linear.x = 0
-            base.angular.z = 0.2
+            base.angular.z = angular_velocity
             self.vel_pub.publish(base)
             rospy.sleep(0.5)
             rospy.loginfo("[DEMO-1], CHECK ==> self.avg_position_angle : {}".format(self.avg_position_angle))
