@@ -356,15 +356,9 @@ class Docking():
                         #alpha_pos = alpha_dock - (self.M_PI/2 + yaw)
                         #could be just
                         alpha_pos = alpha_dock - yaw
-<<<<<<< HEAD:docking.py
+
 
                         self.beta_rad = (self.M_PI/2 - alpha_pos)
-
-                        
-=======
-
-                        self.beta_rad = (self.M_PI/2 - alpha_pos)
->>>>>>> 146e570d87d4ecb454d4fbf36ad9ff9507055a16:ottobo-auto-dock/docking.py
                         if(math.isfinite(alpha_pos)):
                             self.avg_pos.new_value(alpha_pos)
                             self.avg_dock.new_value(alpha_dock)
@@ -482,7 +476,6 @@ class Docking():
 
     def move_angle(self,alpha_rad):
         self.startReadingAngle()
-<<<<<<< HEAD:docking.py
         
         rospy.loginfo("[MOVE-ANGLE] CHECK ==> self.avg_position_angle : {}".format(self.avg_position_angle))
         print()
@@ -506,34 +499,25 @@ class Docking():
         
         rospy.sleep(2)
         
-=======
 
->>>>>>> 146e570d87d4ecb454d4fbf36ad9ff9507055a16:ottobo-auto-dock/docking.py
         #params
         epsilon = 5
         angular_velocity = 0.1
         dt = 0.1
 
-<<<<<<< HEAD:docking.py
         rospy.loginfo("[MOVE-ANGLE] CHECK ==> abs(alpha_rad) : {}".format(abs(alpha_rad*(180/self.M_PI))))
-=======
-        rospy.loginfo("[MOVE-ANGLE], CHECK ==> abs(self.alpha_rad) : {}".format(abs(alpha_rad*(180/self.M_PI))))
->>>>>>> 146e570d87d4ecb454d4fbf36ad9ff9507055a16:ottobo-auto-dock/docking.py
+
         base = geometry_msgs.msg.Twist()
 
         if alpha_rad < 0:
             angular_velocity = angular_velocity * -1
         
-<<<<<<< HEAD:docking.py
         while abs(alpha_rad) - abs(self.avg_docking_angle) > epsilon:
-=======
-        while abs((180/self.M_PI)*alpha_rad) > epsilon:
->>>>>>> 146e570d87d4ecb454d4fbf36ad9ff9507055a16:ottobo-auto-dock/docking.py
+
             base.linear.x = 0
             base.angular.z = angular_velocity
             self.vel_pub.publish(base)
             rospy.sleep(dt)
-<<<<<<< HEAD:docking.py
             rospy.loginfo("[MOVE-ANGLE], CHECK ==>  abs(alpha_rad) - abs(self.avg_docking_angle): {0} - {1} = {2}".format(alpha_rad, self.avg_docking_angle,abs(alpha_rad) - abs(self.avg_docking_angle)))
             print()
         
@@ -541,14 +525,6 @@ class Docking():
         self.vel_pub.publish(base)
 
         self.stopReadingAngle()
-=======
-            rospy.loginfo("[MOVE-ANGLE], CHECK ==>  : {}".format(abs(alpha_rad*(180/self.M_PI))))
-            print()
-        base.angular.z = 0
-        self.vel_pub.publish(base)
-
-        # self.stopReadingAngle()
->>>>>>> 146e570d87d4ecb454d4fbf36ad9ff9507055a16:ottobo-auto-dock/docking.py
 
 ##################################################################
 ################## TAG DETECTION RELATED #########################
@@ -575,10 +551,7 @@ class Docking():
         self.find_tag = False # switch off the callback function findTag
     
     def watchTag(self):
-<<<<<<< HEAD:docking.py
 
-=======
->>>>>>> 146e570d87d4ecb454d4fbf36ad9ff9507055a16:ottobo-auto-dock/docking.py
         self.startReadingAngle()
 
         #params
@@ -599,16 +572,12 @@ class Docking():
             rospy.loginfo("[WATCH-TAG], CHECK ==> self.avg_docking_angle : {}".format(abs(self.avg_docking_angle*(180/self.M_PI))))
             print()
         base.angular.z = 0
-<<<<<<< HEAD:docking.py
         base.linear.x = 0
         self.vel_pub.publish(base)
 
         self.stopReadingAngle()
 
-=======
-        self.vel_pub.publish(base)
-        self.stopReadingAngle()
->>>>>>> 146e570d87d4ecb454d4fbf36ad9ff9507055a16:ottobo-auto-dock/docking.py
+
 ##################################################################
 ###################### TOOL FUNCTIONS ############################
 ##################################################################    
@@ -676,22 +645,16 @@ class Docking():
 
         else:
             rospy.loginfo("[POSITIONING] Robot should position itself")
-<<<<<<< HEAD:docking.py
-=======
-            self.beta_rad = 0
->>>>>>> 146e570d87d4ecb454d4fbf36ad9ff9507055a16:ottobo-auto-dock/docking.py
+
             if a_pos_deg < 0.0:
                 rospy.loginfo("[POSITIONING] Robot should turn right")
             elif a_pos_deg > 0.0:
                 rospy.loginfo("[POSITIONING] Robot should turn left")
-<<<<<<< HEAD:docking.py
+
             beta_rad = self.beta_rad
             
             self.move_angle(beta_rad)
-=======
 
-            self.move_angle(self.beta_rad)
->>>>>>> 146e570d87d4ecb454d4fbf36ad9ff9507055a16:ottobo-auto-dock/docking.py
 
 
         """      
