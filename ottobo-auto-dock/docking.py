@@ -353,9 +353,9 @@ class Docking():
 
                         alpha_dock = math.atan(yy/xx)
                         #not sure
-                        alpha_pos = alpha_dock - (self.M_PI/2 + yaw)
+                        #alpha_pos = alpha_dock - (self.M_PI/2 + yaw)
                         #could be just
-                        #alpha_pos = alpha_dock - yaw
+                        alpha_pos = alpha_dock - yaw
 
                         self.beta_rad = (self.M_PI/2 - alpha_pos)
                         if(math.isfinite(alpha_pos)):
@@ -524,12 +524,8 @@ class Docking():
     def watchTag(self):
         self.startReadingAngle()
 
-<<<<<<< HEAD
-        epsilon = 0.7
-=======
         #params
         epsilon = 5
->>>>>>> 92656e29542a2f9763484094c54cd3e6867f8f89
         angular_velocity = 0.1
         dt = 0.1
 
@@ -600,7 +596,7 @@ class Docking():
 	
         distance = pos.x
 
-        rospy.loginfo("way = {}".format(distance))
+        rospy.loginfo("distance = {}".format(distance))
 
         rospy.loginfo("avg_position_angle: {}".format((self.avg_position_angle)*(180/self.M_PI)))
 
