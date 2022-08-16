@@ -309,10 +309,6 @@ class Docking():
                     x = point.x
                     y = point.y
                     z = point.z
-                    print("x :{}".format(x))
-                    print("y :{}".format(y))
-                    print("z :{}".format(z))
-                    print()
 
 
 
@@ -498,7 +494,7 @@ class Docking():
     def watchTag(self):
         self.startReadingAngle()
 
-        epsilon = 5
+        epsilon = 0.7
         angular_velocity = 0.1
         dt = 0.1
 
