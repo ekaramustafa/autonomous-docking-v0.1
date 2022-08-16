@@ -360,7 +360,7 @@ class Docking():
                             self.avg_dock.new_value(alpha_dock)
                             self.avg_x.new_value(z)
                             self.avg_y.new_value(x)
-                            self.avg_yaw.new_value(ya/w + (self.M_PI/2))
+                            self.avg_yaw.new_value(yaw + (self.M_PI/2))
 
                             avg_pos_angle = self.avg_pos.avg()
                             avg_dock_angle = self.avg_dock.avg()

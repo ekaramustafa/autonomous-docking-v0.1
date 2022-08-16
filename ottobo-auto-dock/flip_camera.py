@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import sys
 import rospy
@@ -10,10 +10,11 @@ import numpy as np
 class image_converter:
 
   def __init__(self):
-    self.image_pub = rospy.Publisher("camera/flipped/image_raw",Image,queue_size=10)
-
     self.bridge = CvBridge()
     self.image_sub = rospy.Subscriber("camera/color/image_raw",Image,self.callback)
+
+    self.image_pub = rospy.Publisher("camera/flipped/image_raw",Image,queue_size=1)
+
 
     
   def callback(self,data):
