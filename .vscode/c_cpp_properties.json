@@ -6,12 +6,21 @@
         "limitSymbolsToIncludedHeaders": false
       },
       "includePath": [
+<<<<<<< HEAD
         "/home/ebu/catkin_ws/devel/include/**",
         "/opt/ros/noetic/include/**",
+=======
+        "/opt/ros/noetic/include/**",
+        "/home/ebu/catkin_ws/devel/include/**",
+>>>>>>> b8e14b286296e28ad65582009470b01c5585e1e1
         "/home/ebu/catkin_ws/src/apriltag_ros/apriltag_ros/include/**",
         "/home/ebu/catkin_ws/src/beginner_tutorials/include/**",
         "/home/ebu/catkin_ws/src/learning_tf/include/**",
         "/home/ebu/catkin_ws/src/realsense-ros/realsense2_camera/include/**",
+<<<<<<< HEAD
+=======
+        "/home/ebu/catkin_ws/src/robot_localization-noetic-devel/include/**",
+>>>>>>> b8e14b286296e28ad65582009470b01c5585e1e1
         "/home/ebu/catkin_ws/src/sensor_health/include/**",
         "/usr/include/**"
       ],
