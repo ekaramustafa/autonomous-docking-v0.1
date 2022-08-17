@@ -388,8 +388,7 @@ class Docking():
                             self.avg_position_x = avg_position_x
                             self.avg_position_y = avg_position_y
                             self.avg_yaw_angle = avg_yaw_angle
-                            #in case values accumulate
-                            #rospy.sleep(0.1)
+                
                 else:
                     print("[AVG_POSITION_ANGLE] tag_{} not detected".format(id))
                     return
@@ -444,6 +443,7 @@ class Docking():
         self.drive_forward(-distance)
 
 #FUNDAMENATAL FUNC
+
     # def move_angle(self,alpha_rad):
     #     if alpha_rad != 0.0:
     #         turn_veloctiy = 0.5 
@@ -474,18 +474,23 @@ class Docking():
     #             rospy.sleep(0.2)
     #         rospy.loginfo("move_angle func is finished")
 
+
     def move_angle(self,alpha_rad):
         self.startReadingAngle()
         
+        #must be reasonable
         rospy.loginfo("[MOVE-ANGLE] CHECK ==> self.avg_position_angle : {}".format(self.avg_position_angle))
         print()
         
+        #must be zero
         rospy.loginfo("[MOVE-ANGLE] CHECK ==> self.avg_docking_angle : {}".format(self.avg_docking_angle))
         print()
         
+        #
         rospy.loginfo("[MOVE-ANGLE] CHECK ==> yaw : {}".format(self.avg_docking_angle-self.avg_position_angle))
         print()
         
+        #must be equal to the m_pi/2 - self.avg_position_angle 
         rospy.loginfo("[MOVE-ANGLE] CHECK ==> alpha_rad : {}".format(alpha_rad))
         print()
         
@@ -495,6 +500,7 @@ class Docking():
         rospy.loginfo("[MOVE-ANGLE] CHECK ==> pos_y : {}".format(self.avg_position_y))
         print()
         
+        #must be equal to the docking angle & zero
         rospy.loginfo("[MOVE-ANGLE] CHECK ==> beta_rad : {}".format(math.atan(self.avg_position_y/self.avg_position_x)))
         
         rospy.sleep(2)
