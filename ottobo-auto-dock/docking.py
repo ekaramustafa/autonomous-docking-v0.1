@@ -74,12 +74,16 @@ class Docking():
         self.avg_dock = avg(2)
         self.avg_x = avg(10)
         self.avg_y = avg(10)
+        self.avg_z = avg(10)
         self.avg_yaw = avg(10)
 
         self.avg_position_angle = 0.0
         self.avg_docking_angle = 0.0
+
         self.avg_position_x = 0.0
         self.avg_position_y = 0.0
+        self.avg_position_z = 0.0
+
         self.avg_yaw_angle = 0.0
 
         ##ASK
@@ -363,15 +367,9 @@ class Docking():
                             self.avg_pos.new_value(alpha_pos)
                             self.avg_dock.new_value(alpha_dock)
                             
-                            #check avg_x & avg_y values
-                            # self.avg_x.new_value(x)
-                            # self.avg_y.new_value(y)
-
-                            #self.avg_x.new_value(x)
-                            #self.avg_y.new_value(z)
-                            
                             self.avg_x.new_value(xx)
                             self.avg_y.new_value(yy)
+                            self.avg_z.new_value(zz)
 
                             self.avg_yaw.new_value(yaw + (self.M_PI/2))
 
@@ -381,12 +379,14 @@ class Docking():
                             avg_yaw_angle = self.avg_yaw.avg()
                             avg_position_x = self.avg_x.avg()
                             avg_position_y = self.avg_y.avg()
+                            avg_position_z = self.avg_z.avg()
                             
                             self.avg_position_angle = avg_pos_angle
                             self.avg_docking_angle = avg_dock_angle
                             
                             self.avg_position_x = avg_position_x
                             self.avg_position_y = avg_position_y
+                            self.avg_position_z = avg_position_z
                             self.avg_yaw_angle = avg_yaw_angle
                 
                 else:
@@ -441,39 +441,6 @@ class Docking():
     def drive_backward(self,distance):
         rospy.loginfo("[DRIVE_BACKWARDS]")
         self.drive_forward(-distance)
-
-#FUNDAMENATAL FUNC
-
-    # def move_angle(self,alpha_rad):
-    #     if alpha_rad != 0.0:
-    #         turn_veloctiy = 0.5 
-    #         if alpha_rad < 0:
-    #             rad_velocity = (-1)*turn_veloctiy
-    #         else:
-    #             rad_velocity = turn_veloctiy
-            
-    #         goal_angle = abs(alpha_rad)
-    #         rospy.loginfo("goal_angle = {0}".format(goal_angle))
-
-    #         waiter = True
-	    
-    #         initial_yaw = self.angle
-
-    #         while waiter:
-    #             base = geometry_msgs.msg.Twist()
-    #             base.linear.x = 0
-    #             base.angular.z = rad_velocity*0.2
-    #             self.vel_pub.publish(base)
-                
-    #             epsilon = goal_angle - abs(initial_yaw - self.angle)
-    #             epsilon = abs(epsilon)
-                
-    #             rospy.loginfo("{0} - {1} = {2}".format(goal_angle,initial_yaw - self.angle,epsilon))
-    #             waiter = epsilon > 0.1
-                
-    #             rospy.sleep(0.2)
-    #         rospy.loginfo("move_angle func is finished")
-
 
     def move_angle(self,alpha_rad):
         self.startReadingAngle()
@@ -533,7 +500,7 @@ class Docking():
     def watchTag(self):
 
         self.startReadingAngle()
-
+        
         #params
         epsilon = 5
         angular_velocity = 0.1
@@ -605,13 +572,7 @@ class Docking():
         pos.y = self.avg_position_y
 
         self.stopReadingAngle()
-        
-        rospy.loginfo("a_pos_rad = {}".format(a_pos_rad))
-        rospy.loginfo("a_pos_deg = {}".format(a_pos_deg))
-	
-        distance = pos.x
 
-        rospy.loginfo("distance = {}".format(distance))
 
         rospy.loginfo("avg_position_angle: {}".format((self.avg_position_angle)*(180/self.M_PI)))
 
@@ -635,56 +596,6 @@ class Docking():
         self.linearApproach()
 
 
-        """      
-        rospy.loginfo("[POSITIONING] Robot should drive in frontal position")
-        self.drive_forward(abs(way))
-
-        #
-        rospy.loginfo("[POSITIONING] Robot should turn now")
-        if (a_pos_deg > 0.00000):
-            self.move_angle((-1)*self.M_PI/2)
-        else:
-            self.move_angle(self.M_PI/2)
-        #
-        
-        rospy.loginfo("Search the tag again")
-        self.searchTag()
-        rospy.sleep(1)
-        rospy.loginfo("Adjusting")
-        self.adjusting()
-        rospy.sleep(1)
-
-        self.startReadingAngle()
-        a_pos_rad = abs(self.avg_position_angle)
-        self.stopReadingAngle()
-
-        a_pos_deg = abs(180/self.M_PI * a_pos_rad)
-
-        if a_pos_deg < 20.0:
-            if a_pos_deg < 10:
-                self.startReadingAngle()
-                rospy.sleep(1)
-                self.docking()
-            else:
-                self.startReadingAngle()
-                x = abs(self.avg_position_x)
-                epsilon = self.epsi()
-                phi = (self.M_PI/2) - epsilon
-                d = math.tan(phi) * abs(self.avg_position_y)
-                self.stopReadingAngle()
-
-                #chech whether the robot is away enough from the docking station
-
-                if(x-d > 0.10):
-                    self.linearApproach()
-                else:
-                    self.startReadingAngle()
-                    self.docking()
-        else:
-            rospy.loginfo("RESTART_POSITIONING")
-            self.positioning()
-        """
-
 #MAIN FUNC 2
     """
     LINEAR APPROACH
@@ -698,6 +609,7 @@ class Docking():
         alpha = self.avg_position_angle
         pos.x = self.avg_position_x
         pos.y = self.avg_position_y
+        pos.z = self.avg_position_z
         self.stopReadingAngle()
 
         alpha_deg = (180/self.M_PI)*alpha
@@ -706,8 +618,10 @@ class Docking():
         e = abs(epsilon_rad)
 
         beta = (self.M_PI/2) - epsilon_rad
-        d = 100*pos.y # in cm
-        way = math.sqrt((d*d)+(1+ math.tan(beta)*math.tan(beta)))
+
+        distance = 10/100
+
+        way = math.sqrt(math.pow(pos.x-distance,2)+math.pow(pos.z,2))
 
         rospy.loginfo("[linearApproach] pos_angle={}".format(alpha_deg))
         rospy.loginfo("[linearApproach] epsilon={}".format(epsilon_deg))
