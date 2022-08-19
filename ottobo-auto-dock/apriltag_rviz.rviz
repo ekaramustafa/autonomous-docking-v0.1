@@ -61,11 +61,7 @@ Visualization Manager:
       Frames:
         All Enabled: false
         base_link:
-          Value: false
-        camera_accel_frame:
-          Value: false
-        camera_accel_optical_frame:
-          Value: false
+          Value: true
         camera_color_frame:
           Value: false
         camera_color_optical_frame:
@@ -74,10 +70,6 @@ Visualization Manager:
           Value: false
         camera_depth_optical_frame:
           Value: false
-        camera_gyro_frame:
-          Value: false
-        camera_imu_optical_frame:
-          Value: true
         camera_link:
           Value: false
         laser:
@@ -85,9 +77,9 @@ Visualization Manager:
         laser_obs:
           Value: false
         odom:
-          Value: false
+          Value: true
       Marker Alpha: 1
-      Marker Scale: 0.30000001192092896
+      Marker Scale: 1
       Name: TF
       Show Arrows: true
       Show Axes: true
@@ -96,17 +88,11 @@ Visualization Manager:
         odom:
           base_link:
             camera_link:
-              camera_accel_frame:
-                camera_accel_optical_frame:
-                  {}
               camera_color_frame:
                 camera_color_optical_frame:
                   {}
               camera_depth_frame:
                 camera_depth_optical_frame:
-                  {}
-              camera_gyro_frame:
-                camera_imu_optical_frame:
                   {}
             laser:
               {}
@@ -133,7 +119,7 @@ Visualization Manager:
   Global Options:
     Background Color: 48; 48; 48
     Default Light: true
-    Fixed Frame: camera_link
+    Fixed Frame: base_link
     Frame Rate: 30
   Name: root
   Tools:
@@ -157,7 +143,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 0.6747379302978516
+      Distance: 2.9442145824432373
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -173,9 +159,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.390398234128952
+      Pitch: 0.18039828538894653
       Target Frame: <Fixed Frame>
-      Yaw: 4.71358060836792
+      Yaw: 3.118577003479004
     Saved: ~
 Window Geometry:
   Camera:
