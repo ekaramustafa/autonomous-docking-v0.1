@@ -79,12 +79,6 @@ class Docking():
         self.avg_position_y = 0.0
         self.avg_position_z = 0.0
 
-        self.initial_x = 0.0
-        self.initial_y = 0.0
-        self.initial_z = 0.0
-        self.initial_docking_angle = 0.0
-        self.initial_inits = False
-
         self.yaw = 0
 
 
