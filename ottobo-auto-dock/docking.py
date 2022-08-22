@@ -9,7 +9,9 @@ import apriltag_ros.msg
 import tf
 import tools
 import math
-
+#TO-DO
+#change docking_angle with yaw
+#change approach_angle with yaw
 class Docking():
 
     def __init__(self):
@@ -100,7 +102,6 @@ class Docking():
         self.find_tag_sub = rospy.Subscriber("tag_detections",apriltag_ros.msg.AprilTagDetectionArray,self.findTag)
 
         #sub for broadcasting the approachFrame
-        self.approach_frame_sub = rospy.Subscriber("cmd_vel",rospy.AnyMsg,self.broadcast_approach_frame)
         self.broadcast_approach_frame_bool = True
 
         #odom_sub is to get /odom frame
@@ -331,6 +332,7 @@ class Docking():
 
         y = approach_vec.y
         x = approach_vec.x 
+    
         return math.atan(y/x)
 
 ##################################################################
@@ -373,23 +375,17 @@ class Docking():
 
         self.odom_transform = geometry_msgs.msg.Transform(pose,quaternion)
 
-    """
-    BROADCAST approachFrame relative to the baselink
-    """
-    def broadcast_approach_frame(self,data):
-
         #param
-        distance = 30/100 #20 cm
+        distance = 100/100 #20 cm
         #determine which translation vector & quat to use  base_tag or tag_base
         point = self.get_point_odom_tag()
         quat = self.get_quat_odom_tag()
         #assign new x value
         point.x -= distance 
-        n = data 
         while self.broadcast_approach_frame_bool:
             br = tf.TransformBroadcaster()
             br.sendTransform([point.x,point.y,point.z],[quat.x,quat.y,quat.z,quat.w],rospy.Time.now(),self.approach_frame,self.odom_frame)
-        
+
 
     def get_avg_position_angle_callback(self,data):
         """
@@ -477,7 +473,6 @@ class Docking():
         velocity = 0.15
         direction = distance / abs(distance)
 
-        #We actually save the start Transformation
         startTransform = self.odom_transform
         startPos = tools.get_translation_vector(tools.get_transformation_matrix(startTransform))
 
@@ -503,8 +498,7 @@ class Docking():
 
             rospy.sleep(0.3)
 
-        zero = geometry_msgs.msg.Twist()
-        self.vel_pub.publish(zero)
+        self.vel_pub.publish( geometry_msgs.msg.Twist())
 
     def drive_backward(self,distance):
         rospy.loginfo("[DRIVE_BACKWARDS]")
@@ -588,11 +582,11 @@ class Docking():
 
     def watchApproachFrame(self):
         #params
-        epsilon = 4
+        epsilon = 2
         angular_velocity = 0.1
         dt = 0.1
 
-        rospy.loginfo("[WATCH-APPROACH_FRAME], approach_angle() : {}\n".format(abs(self.approach_angle())))
+        rospy.loginfo("[WATCH-APPROACH_FRAME], approach_angle() : {}\n".format(abs(self.approach_angle()*(180/self.M_PI))))
         base = geometry_msgs.msg.Twist()
 
         if self.approach_angle() < 0:
@@ -603,10 +597,7 @@ class Docking():
             base.angular.z = angular_velocity
             self.vel_pub.publish(base)
             rospy.sleep(dt)
-            rospy.loginfo("[WATCH-APPROACH_FRAME], approach_angle() : {}\n".format(abs(self.approach_angle())))
-        base.angular.z = 0
-        base.linear.x = 0
-        self.vel_pub.publish(base)
+            rospy.loginfo("[WATCH-APPROACH_FRAME], approach_angle() : {}\n".format(abs(self.approach_angle()*(180/self.M_PI))))
 
 ##################################################################
 ###################### TOOL FUNCTIONS ############################
@@ -631,6 +622,7 @@ class Docking():
 #MAIN FUNC 1
     
     def positioning(self):
+        self.startReadingAngle()
         # a_pos_deg = self.get_direction_angle()*(180/self.M_PI)
         a_pos_deg = self.avg_position_angle*(180/self.M_PI)
 
@@ -644,30 +636,23 @@ class Docking():
         else:
             self.linearApproach()
 
+        self.stopReadingAngle()
 
 #MAIN FUNC 2
     """
     LINEAR APPROACH
     """
     def linearApproach(self):
-        # alpha = self.get_direction_angle()
-        alpha = self.avg_position_angle
-        
         x = self.get_point_approach_base().z
         y = self.get_point_approach_base().x
 
-        way = math.sqrt(math.pow(x,2)+math.pow(y,2))
+        way = math.sqrt(x*x+(y*y))
+        rospy.loginfo("way : {}".format(way))
+        #way is not accurate
 
-        if alpha < 0.0: # TURN RIGHT
-            rospy.loginfo("[linearApproach] Turning right with epsilon={}\n".format(self.approach_angle()))
-            #self.watchApproachFrame()
-            #self.drive_forward(way)
-        
-        elif alpha > 0.0: #TURN LEFT
-            rospy.loginfo("[linearApproach] Turning left with epsilon={}\n".format(self.approach_angle()))
-            #self.watchApproachFrame()
-            #self.drive_forward(way)
-            
+        self.watchApproachFrame()
+        self.drive_forward(way)
+    
         rospy.loginfo("[linearApproach] FINISHED\n")
         
 #MAIN FUNC 4
@@ -689,14 +674,14 @@ class Docking():
         rospy.loginfo("[START_DOCKING] positioning() starts...\n")
         self.positioning()
 
-        rospy.loginfo("[START_DOCKING] Verify the tag is still visible\n")
-        rospy.loginfo("[START_DOCKING] searchTag() starts...\n")
-        self.searchTag()
-        rospy.loginfo("[START_DOCKING] Align the robot with docking station\n")
-        rospy.loginfo("[START_DOCKING] watchTag() starts...\n")
-        self.watchTag()
-        rospy.loginfo("[START_DOCKING] docking() starts...\n")
-        self.docking()
+        # rospy.loginfo("[START_DOCKING] Verify the tag is still visible\n")
+        # rospy.loginfo("[START_DOCKING] searchTag() starts...\n")
+        # self.searchTag()
+        # rospy.loginfo("[START_DOCKING] Align the robot with docking station\n")
+        # rospy.loginfo("[START_DOCKING] watchTag() starts...\n")
+        # self.watchTag()
+        # rospy.loginfo("[START_DOCKING] docking() starts...\n")
+        # self.docking()
 
 
 
