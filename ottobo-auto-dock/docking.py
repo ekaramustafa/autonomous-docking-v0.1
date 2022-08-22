@@ -381,7 +381,7 @@ class Docking():
     def broadcast_approach_frame(self,data):
         if self.broadcast_approach_frame_bool:
             #param
-            distance = 10/100 #10 cm
+            distance = 30/100 #10 cm
 
             #determine which translation vector & quat to use  base_tag or tag_base
             point = self.get_point_base_tag()
@@ -661,6 +661,7 @@ class Docking():
     """
     def linearApproach(self):
         alpha = self.get_direction_angle()
+        alpha = self.avg_position_angle()
         
         x = self.get_point_approach_base().z
         y = self.get_point_approach_base().x
