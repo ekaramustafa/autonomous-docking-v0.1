@@ -53,10 +53,6 @@ class Docking():
 
         #is a bool to start and stop findTag callback
         self.find_tag = False
-        
-        #yaw angle from IMU sensor. The IMU is a built-in sensor that can
-        #measure the angle the robot has turned. 
-        self.angle = 0
 
         #used in findTag callback
         self.TAG_AVAILABLE = False
@@ -592,7 +588,7 @@ class Docking():
 
     def watchApproachFrame(self):
         #params
-        epsilon = 1
+        epsilon = 4
         angular_velocity = 0.1
         dt = 0.1
 
