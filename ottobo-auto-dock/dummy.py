@@ -1,38 +1,31 @@
 #!/usr/bin/env python3
 import rospy
-import tools
-import apriltag_ros.msg
-import math
+from threading import Thread,Lock
 import geometry_msgs.msg
 from sensor_msgs.msg import Imu
+import std_msgs.msg 
 
-class IMU():
+class dummy():
 
     def __init__(self):
-        rospy.init_node("IMU Reciever")
-        self.imu_sub = rospy.Subscriber("imu/data",Imu,self.callback)
+        rospy.init_node("dummy")
+        self.str_sub = rospy.Subscriber("dummy",std_msgs.msg.String,self.callback)
         self.vel_pub = rospy.Publisher("cmd_vel",geometry_msgs.msg.Twist,queue_size=10)
-
+        self.mutex = Lock()
+        self.controller = True
 
     def callback(self,data):
-        base = geometry_msgs.msg.Twist()
-        quat = data.orientation
-        euler = tools.get_euler_angles(quat) 
-        yaw = euler[2]
+        rospy.loginfo("{}\n".format(data))
+        self.callthread()
+    
+    def printer(self):
+        rospy.loginfo("Thread thread\n")
 
-        # if yaw < 0:
-        #      yaw += 2*math.pi
-        
-        rospy.loginfo("Yaw angle: {}".format(yaw*(180/math.pi)))
-        
-        # base.angular.z = 0.05
-        # self.vel_pub.publish(base)
-
-
-
-        
+    def callthread(self):
+        t1 = Thread(self.printer())
+        t1.start()
 def main():
-    tp = IMU()
+    tp = dummy()
     try:
         rospy.spin()
     except KeyboardInterrupt:
