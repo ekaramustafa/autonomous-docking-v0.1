@@ -18,37 +18,23 @@ class Docking():
         self.vel_pub = rospy.Publisher("cmd_vel",geometry_msgs.msg.Twist,queue_size=10)
 
         rospy.loginfo("DOCKING INIT\n")
-        rospy.sleep(1) #in source code, its purpose is said to be for waiting for the AprilTagDetectionNode
+        #waits for AprilTag Node
+        rospy.sleep(1)
         
         #TF listener to listen frames
         self.tf_listener = tf.TransformListener()
         
         self.base_link = "base_link"
-        self.camera_link = "camera_link"
-        self.optical_frame = "camera_color_optical_frame"
-        self.approach_frame = "approachFrame"
         self.odom_frame = "odom"
-
-        #camera_link->Base_link
-        self.transform_cam_base = geometry_msgs.msg.Transform()
-
-        #Optical->camera_link
-        self.transform_optical_cam = geometry_msgs.msg.Transform()
+        self.approach_frame = "approachFrame"
+        self.docking_frame = "chargingStation"
 
         self.odom_transform = geometry_msgs.msg.Transform()
 
-        """
-        MODIFY THE TAG_ID
-        """
+        #param
         self.tag_id = "tag_0"
 
-        #init of links
-        self.get_cameraLink_baseLink()
-        rospy.loginfo("[INIT] CameraLink -> baseLink\n")
-        self.get_optical_frame()
-        rospy.loginfo("[INIT] optical -> camera\n")
-
-        #is a bool to start and stop get_avg_position_callback
+        #directionangle_and_broadcast_callback controllers
         self.start_avg = False 
 
         #is a bool to start and stop findTag callback
@@ -57,90 +43,34 @@ class Docking():
         #used in findTag callback
         self.TAG_AVAILABLE = False
 
-        #to keep trying after failed attempts
-        self.try_more = True
-
-        #Average of several vars
-        #NEED MORE EXPLANATION
         #params
-        rospy.loginfo("[INIT] avg inits\n")
+        rospy.loginfo("[INIT] Avg inits\n")
         self.avg_pos = avg(10)
-        self.avg_dock = avg(2)
-        self.avg_x = avg(10)
-        self.avg_y = avg(10)
-        self.avg_z = avg(10)
+        self.direction_angle = 0.0
 
-        self.avg_position_angle = 0.0
-        self.avg_docking_angle = 0.0
-
-        self.avg_position_x = 0.0
-        self.avg_position_y = 0.0
-        self.avg_position_z = 0.0
-
-        self.yaw = 0
-
-
-        self.docking_status = True
-
-        self.M_PI = math.pi #180 degrees, pi in radians i suppose
+        self.M_PI = math.pi
 
         self.odom_pos = geometry_msgs.msg.Vector3()
 
+        self.tag_sub = rospy.Subscriber("tag_detections",apriltag_ros.msg.AprilTagDetectionArray,self.directionangle_and_broadcast_callback)  
 
-        #tag_sub is for getting average position angle
-        self.tag_sub = rospy.Subscriber("tag_detections",apriltag_ros.msg.AprilTagDetectionArray,self.get_avg_position_angle_callback)  
-
-        #find_tag_sub is to search for specific tag_id 
         self.find_tag_sub = rospy.Subscriber("tag_detections",apriltag_ros.msg.AprilTagDetectionArray,self.findTag)
 
-
-        #odom_sub is to get /odom frame
         self.odom_sub = rospy.Subscriber("odom",nav_msgs.msg.Odometry,self.get_odom_pos)
 
+        #Broadcast controllers
         self.broadcast_approach = False
+
+        #DOCKING
+        #battery sub & callback which assign self.docking_status True
+        self.docking_status = False
 
         rospy.loginfo("[INIT] Start Docking Process\n")
         self.startDocking()
 
-##################################################################
-################## INIT OF LINKS #################################
-##################################################################
-
-    def get_cameraLink_baseLink(self):
-        """""
-        initialize transform_cam_base 
-        Camera_link->base_link 
-        
-        """""
-        try:
-            self.tf_listener.waitForTransform(self.camera_link,self.base_link,rospy.Time(0),rospy.Duration(5.0))
-            pos, quad= self.tf_listener.lookupTransform(self.camera_link,self.base_link,rospy.Time(0))
-            pos_obj = geometry_msgs.msg.Vector3(pos[0],pos[1],pos[2])
-            quad_obj = geometry_msgs.msg.Quaternion(quad[0],quad[1],quad[2],quad[3])
-            self.transform_cam_base = geometry_msgs.msg.Transform(pos_obj,quad_obj)
-        except Exception as ex:
-            rospy.logerr(ex)
-            rospy.sleep(1.0)
-    
-    def get_optical_frame(self):
-        """""
-        initialize transform_optical_cam 
-        optical_link->camera_link 
-
-        """""
-        try:
-            self.tf_listener.waitForTransform(self.optical_frame,self.camera_link,rospy.Time(0),rospy.Duration(5.0))
-            pos, quad =self.tf_listener.lookupTransform(self.optical_frame,self.camera_link,rospy.Time(0))
-            pos_obj = geometry_msgs.msg.Vector3(pos[0],pos[1],pos[2])
-            quad_obj = geometry_msgs.msg.Quaternion(quad[0],quad[1],quad[2],quad[3])
-            self.transform_optical_cam = geometry_msgs.msg.Transform(pos_obj,quad_obj)
-        except Exception as ex:
-            rospy.logerr(ex)  
-            rospy.sleep(1.0)
-
 
 ##################################################################
-############ CALCULATING ANGLES & RELATIVE POINTS ################
+################### CALCULATING ANGLES  ##########################
 ##################################################################
     """
     CALCULATING DOCKING_ANGLE
@@ -172,7 +102,7 @@ class Docking():
     CALCULATING DIRECTION ANGLE
     """
 
-    def get_direction_angle(self):
+    def direction_angle(self):
         transform = geometry_msgs.msg.TransformStamped()
 
         try:
@@ -218,9 +148,13 @@ class Docking():
         x = approach_vec.x 
     
         return math.atan(y/x)
+
+##################################################################
+################ CALCULATING RELATIVE POINTS #####################
+##################################################################   
    
     """
-    CALCULATING POINT RELATIVE TO BASE_TAG
+    CALCULATING TAG'S POINT FROM ODOM TO TAG
     """
     def get_point_odom_tag(self):
 
@@ -234,7 +168,7 @@ class Docking():
             transform = geometry_msgs.msg.Transform(pos_obj,quad_obj)
         
         except Exception as e:
-            rospy.logerr(f"docking_angle() {e}")
+            rospy.logerr(f"get_point_odom_tag() {e}")
             rospy.sleep(1)
         
         tags_vec = tools.get_translation_vector(tools.get_transformation_matrix(transform))
@@ -244,51 +178,9 @@ class Docking():
         map_tag_z = tags_vec.z
         
         return geometry_msgs.msg.Point(map_tag_x,map_tag_y,map_tag_z)
-    
 
-    def get_point_approach_base(self):
-            #take the pos & quad of approachTarget frame relative to base tag
-        try:
-            self.tf_listener.waitForTransform(self.approach_frame,self.base_link,rospy.Time(0),rospy.Duration(5.0))
-            pos, quad = self.tf_listener.lookupTransform(self.approach_frame,self.base_link,rospy.Time(0))
-            pos_obj = geometry_msgs.msg.Vector3(pos[0],pos[1],pos[2])
-            quad_obj = geometry_msgs.msg.Quaternion(quad[0],quad[1],quad[2],quad[3])
-            transform = geometry_msgs.msg.Transform(pos_obj,quad_obj)
-        
-        except Exception as e:
-            rospy.logerr(f"get_point_approach_base {e}")
-            rospy.sleep(1)
-            return
-        approach_vec = tools.get_translation_vector(tools.get_transformation_matrix(transform))
-
-        y = approach_vec.y
-        x = approach_vec.x
-        z = approach_vec.z 
-        
-        return geometry_msgs.msg.Point(x,y,z)
-
-    def get_point_base_approach(self):
-            #take the pos & quad of approachTarget frame relative to base tag
-        try:
-            self.tf_listener.waitForTransform(self.base_link,self.approach_frame,rospy.Time(0),rospy.Duration(5.0))
-            pos, quad = self.tf_listener.lookupTransform(self.base_link,self.approach_frame,rospy.Time(0))
-            pos_obj = geometry_msgs.msg.Vector3(pos[0],pos[1],pos[2])
-            quad_obj = geometry_msgs.msg.Quaternion(quad[0],quad[1],quad[2],quad[3])
-            transform = geometry_msgs.msg.Transform(pos_obj,quad_obj)
-        
-        except Exception as e:
-            rospy.logerr(f"get_point_approach_base {e}")
-            rospy.sleep(1)
-            return
-        approach_vec = tools.get_translation_vector(tools.get_transformation_matrix(transform))
-
-        y = approach_vec.y
-        x = approach_vec.x
-        z = approach_vec.z 
-        
-        return geometry_msgs.msg.Point(x,y,z)
     """
-    CALCULATING QUATERNION RELATIVE TO BASE_TAG
+    CALCULATING TAG'S QUATERNION FROM ODOM TO TAG
     """
     def get_quat_odom_tag(self):  
         transform = geometry_msgs.msg.Transform()
@@ -305,12 +197,79 @@ class Docking():
             rospy.sleep(1)
 
         return quad_obj
+    """
+    CALCULATING TRANSFORM FROM ODOM TO DOCKING
+    """
+    def get_transform_odom_docking(self):
 
+        transform = geometry_msgs.msg.Transform()
+        
+        try:
+            self.tf_listener.waitForTransform(self.odom_frame,self.docking_frame,rospy.Time(0),rospy.Duration(5.0))
+            pos, quad = self.tf_listener.lookupTransform(self.odom_frame,self.docking_frame,rospy.Time(0))
+            pos_obj = geometry_msgs.msg.Vector3(pos[0],pos[1],pos[2])
+            quad_obj = geometry_msgs.msg.Quaternion(quad[0],quad[1],quad[2],quad[3])
+            transform = geometry_msgs.msg.Transform(pos_obj,quad_obj)
+        
+        except Exception as e:
+            rospy.logerr(f"get_transform_odom_docking() {e}\n")
+            rospy.sleep(1)
+        
 
+        return transform
+    """
+    CALCULATING POINT FROM ODOM TO APPROACH
+    """
+    def get_point_odom_approach(self):
+        #take the pos & quad of approachTarget frame relative to odom
+        try:
+            self.tf_listener.waitForTransform(self.odom_frame,self.approach_frame,rospy.Time(0),rospy.Duration(5.0))
+            pos, quad = self.tf_listener.lookupTransform(self.odom_frame,self.approach_frame,rospy.Time(0))
+            pos_obj = geometry_msgs.msg.Vector3(pos[0],pos[1],pos[2])
+            quad_obj = geometry_msgs.msg.Quaternion(quad[0],quad[1],quad[2],quad[3])
+            transform = geometry_msgs.msg.Transform(pos_obj,quad_obj)
+        
+        except Exception as e:
+            rospy.logerr(f"get_point_odom_appraoch {e}")
+            rospy.sleep(1)
+            return
+        vec = tools.get_translation_vector(tools.get_transformation_matrix(transform))
+
+        y = vec.y
+        x = vec.x
+        z = vec.z 
+        
+        return geometry_msgs.msg.Point(x,y,z)
+    """
+    CALCULATING POINT FROM BASE TO APPROACH
+    """
+    def get_point_base_approach(self):
+        #take the pos & quad of approachFrame relative to base_link
+        try:
+            self.tf_listener.waitForTransform(self.base_link,self.approach_frame,rospy.Time(0),rospy.Duration(5.0))
+            pos, quad = self.tf_listener.lookupTransform(self.base_link,self.approach_frame,rospy.Time(0))
+            pos_obj = geometry_msgs.msg.Vector3(pos[0],pos[1],pos[2])
+            quad_obj = geometry_msgs.msg.Quaternion(quad[0],quad[1],quad[2],quad[3])
+            transform = geometry_msgs.msg.Transform(pos_obj,quad_obj)
+        
+        except Exception as e:
+            rospy.logerr(f"get_point_base_approach {e}")
+            rospy.sleep(1)
+            return
+        approach_vec = tools.get_translation_vector(tools.get_transformation_matrix(transform))
+
+        y = approach_vec.y
+        x = approach_vec.x
+        z = approach_vec.z 
+        
+        return geometry_msgs.msg.Point(x,y,z)
+    
 ##################################################################
 ################## CALLBACK FUNCTIONS ############################
 ##################################################################
-
+    """
+    SEARCH FOR AVAILABLE TAG
+    """
     def findTag(self,data):
         if self.find_tag:  
             for i in range(len(data.detections)):
@@ -347,7 +306,7 @@ class Docking():
 
         self.odom_transform = geometry_msgs.msg.Transform(pose,quaternion)
 
-    def get_avg_position_angle_callback(self,data):
+    def directionangle_and_broadcast_callback(self,data):
         """
         GETS THE AVERAGE POSITION
         """
@@ -357,72 +316,17 @@ class Docking():
             for i in range(len(data.detections)):
                 id, = data.detections[i].id
                 if self.tag_id == "tag_{}".format(id): 
-                    detect = data.detections[i]
-                    pose = detect.pose
-                    b = pose.pose
-                    p = b.pose
+                    alpha_pos = self.direction_angle()
 
-                    point = p.position
-                    x = point.x
-                    y = point.y
-                    z = point.z
+                    if(math.isfinite(alpha_pos)):
+                        self.avg_pos.new_value(alpha_pos)
 
-                    #opticalFrame -> tagFrame
-                    optical_tag_origin = geometry_msgs.msg.Vector3(x,y,z)
-
-                    optical_tag_quad = geometry_msgs.msg.Quaternion(p.orientation.x,p.orientation.y,p.orientation.z,p.orientation.w)
-
-                    # optical -> tag
-                    optical_tag_trans = geometry_msgs.msg.Transform(optical_tag_origin,optical_tag_quad)
-
-                    #tag -> cam = (optical->tag)^(-1) * (optical->cam)  
-                    tag_cam = tools.multiply_transforms(tools.get_inverse_transform_object(optical_tag_trans),self.transform_optical_cam)
-                    
-                    #tag -> base = (tag -> cam)* (cam->base)
-                    tag_base = tools.multiply_transforms(tag_cam,self.transform_cam_base)
-
-                    #base -> tag = (tag -> base)^(-1)
-                    base_tag = tools.get_inverse_transform_object(tag_base)
-
-                    cords_vec = tools.get_translation_vector(tools.get_transformation_matrix(base_tag))
-                    xx = cords_vec.x
-                    yy = cords_vec.y
-                    zz = cords_vec.z
-                    yaw = tools.get_euler_angles(base_tag.rotation)[2]
-                    self.yaw = yaw
-                    
-                    if(abs(xx)<0.00001):
-                        rospy.logerr("[AVG_POSITION_ANGLE] Division through zero is not allowed! xx:{0},y::{1},z:{2}".format(xx,yy,zz))                   
-                    else: 
-
-                        alpha_dock = math.atan(yy/xx)
-
-                        alpha_pos = self.get_direction_angle()
-
-                        if(math.isfinite(alpha_pos)):
-                            self.avg_pos.new_value(alpha_pos)
-                            self.avg_dock.new_value(alpha_dock)
-                            
-                            self.avg_x.new_value(xx)
-                            self.avg_y.new_value(yy)
-                            self.avg_z.new_value(zz)
-
-                            avg_pos_angle = self.avg_pos.avg()
-                            avg_dock_angle = self.avg_dock.avg()
-                           
-                            avg_position_x = self.avg_x.avg()
-                            avg_position_y = self.avg_y.avg()
-                            avg_position_z = self.avg_z.avg()
-                            
-                            self.avg_position_angle = avg_pos_angle
-                            self.avg_docking_angle = avg_dock_angle
-                            
-                            self.avg_position_x = avg_position_x
-                            self.avg_position_y = avg_position_y
-                            self.avg_position_z = avg_position_z
+                        avg_pos_angle = self.avg_pos.avg()
+                        self.direction_angle = avg_pos_angle
                 else:
                     rospy.logerr("[AVG_POSITION_ANGLE] tag_{} not detected\n".format(id))
                     return                
+
 ##################################################################
 ################## MOVEMENT FUNCTIONS ############################
 ##################################################################
@@ -462,16 +366,15 @@ class Docking():
 
         self.vel_pub.publish( geometry_msgs.msg.Twist())
 
-
 ##################################################################
-################## TAG DETECTION RELATED #########################
+################## TAG & FRAME RELATED ###########################
 ##################################################################    
     
     def searchTag(self):
 
         rospy.loginfo("[searchTag] Searching Tag...")
         self.find_tag = True # triggers to findTag() callback function
-        rospy.sleep(1.5)
+        rospy.sleep(1)
         base = geometry_msgs.msg.Twist()
 
         while not self.TAG_AVAILABLE:
@@ -487,14 +390,13 @@ class Docking():
         self.vel_pub.publish(base)
         self.find_tag = False # switch off the callback function findTag
 
-
     def watchTag(self):
         #params
         epsilon = 4
         angular_velocity = 0.1
         dt = 0.1
 
-        rospy.loginfo("[WATCH-TAG], CHECK ==> docking_angle() : {}\n".format(abs(self.docking_angle()*(180/self.M_PI))))
+        rospy.loginfo("[WATCH-TAG], docking_angle() : {}\n".format(abs(self.docking_angle()*(180/self.M_PI))))
         base = geometry_msgs.msg.Twist()
 
         if self.docking_angle() < 0:
@@ -504,11 +406,10 @@ class Docking():
             base.angular.z = angular_velocity
             self.vel_pub.publish(base)
             rospy.sleep(dt)
-            rospy.loginfo("[WATCH-TAG], CHECK ==> docking_angle() : {}\n".format(abs(self.docking_angle()*(180/self.M_PI))))
+            rospy.loginfo("[WATCH-TAG], docking_angle() : {}\n".format(abs(self.docking_angle()*(180/self.M_PI))))
         base.angular.z = 0
         base.linear.x = 0
         self.vel_pub.publish(base)
-
 
     def watchApproachFrame(self):
         #params
@@ -529,105 +430,95 @@ class Docking():
             rospy.sleep(dt)
             rospy.loginfo("[WATCH-APPROACH_FRAME], approach_angle() : {}\n".format(abs(self.approach_angle()*(180/self.M_PI))))
 ##################################################################
-###################### TOOL FUNCTIONS ############################
+################# CALLBACK CONTROLLERS ###########################
 ##################################################################       
     def startReadingAngle(self):
         self.start_avg = False
         self.avg_pos.flush_array()
-        self.avg_dock.flush_array()
-        self.avg_x.flush_array()
-        self.avg_y.flush_array()
         self.start_avg = True
-        rospy.sleep(3)
+        rospy.sleep(1)
     
     def stopReadingAngle(self):
         self.start_avg = False
-
 ##################################################################
-################## MAIN FUNCTIONS ################################
-##################################################################
-
-
-#MAIN FUNC 1
-    
-    def positioning(self):
-        self.startReadingAngle()
-        # a_pos_deg = self.get_direction_angle()*(180/self.M_PI)
-        a_pos_deg = self.avg_position_angle*(180/self.M_PI)
-
-        rospy.loginfo("position_angle: {}\n".format((self.avg_position_angle)*(180/self.M_PI)))
-
-        epsilon = 2 # from watchTag() function
-        if abs(a_pos_deg) < epsilon:
-            rospy.loginfo("[POSITIONING] Robot is located in front of docking station. No positioning needed\n")
-            rospy.loginfo("[POSITIONING] Start Docking!\n")
-            self.docking()
-        else:
-            self.broadcast_approach = True
-            self.linearApproach()
-            #self.broadcast_approach = False
-
-        self.stopReadingAngle()
-
-#MAIN FUNC 2
-    #Thread
+################# BRODCAST FUNCTIONS #############################
+################################################################## 
     def broadcast_approachFrame(self):
-        rospy.loginfo("[BROADCAST_APPROACH_FRAME]")
         #param
-        distance = 75/100 #75 cm
+        distance = 100/100 #100 cm
 
-        #determine which translation vector & quat to use  base_tag or tag_base
         point = self.get_point_odom_tag()
         quat = self.get_quat_odom_tag()
         #assign new x value
         point.x -= distance 
+        br = tf.TransformBroadcaster()
         while self.broadcast_approach:
-            br = tf.TransformBroadcaster()
             br.sendTransform([point.x,point.y,point.z],[quat.x,quat.y,quat.z,quat.w],rospy.Time.now(),self.approach_frame,self.odom_frame)
-    """
-    LINEAR APPROACH
-    """
+ 
+##################################################################
+################## MAIN FUNCTIONS ################################
+################################################################## 
+
+# MAIN FUNC 1   
+    def positioning(self):
+        self.startReadingAngle()
+        a_pos_deg = self.direction_angle*(180/self.M_PI)
+
+        rospy.loginfo("[POSITIONING] Position_angle: {}\n".format((self.direction_angle)*(180/self.M_PI)))
+
+        epsilon = 2
+        if abs(a_pos_deg) < epsilon:
+            rospy.loginfo("[POSITIONING] Robot is located in front of docking station. No positioning needed\n")
+            rospy.loginfo("[POSITIONING] Start Docking!\n")
+            self.frontal_docking()
+        else:
+            self.linearApproach()
+
+        self.stopReadingAngle()
+
+# MAIN FUNC 2   
     def linearApproach(self):
-        x = self.get_point_approach_base().z
-        # x = self.get_point_base_approach().x
-        y = self.get_point_approach_base().x
-        # y = self.get_point_base_approach().y
-
-
-
-        #check whether way is correct
+        #Broadcast approachFrame
+        self.broadcast_approach = True
+        
+        x = self.get_point_base_approach().x  
+        #x = self.get_point_odom_approach().x 
+        #x -= abs(self.get_point_odom_base().x)    
+        
+        y = self.get_point_base_approach().y
+        #y = self.get_point_odom_approach().y
+        #y -= abs(self.get_point_odom_base().y)
         
         self.watchApproachFrame()
-        
-        #Try below as well
-        # x = self.get_point_approach_base().z
-        # y = self.get_point_approach_base().x
+        rospy.sleep(1)
+
         way = math.sqrt((x*x)+(y*y))
         rospy.loginfo("way : {}".format(way))
-        
-        self.broadcast_approach = False
+
         self.drive_forward(way)
         rospy.loginfo("[linearApproach] FINISHED\n")
-        
-#MAIN FUNC 4
-    """
-    DOCKING STAGE
-    """
-    def docking(self):
-        rospy.loginfo("[DOCKING] Docking is starting\n")
+        self.broadcast_approach = False
+     
+#MAIN FUNC 3
+    def frontal_docking(self):
+        rospy.loginfo("Docking is starting")
+        pass
 
 
-#MAIN FUNC 0-STARTER
+#STARTER FUNC
     def startDocking(self):
         rospy.sleep(0.5)
+        
         rospy.loginfo("[START_DOCKING] searchTag() starts...\n")
         self.searchTag()
+        
         rospy.loginfo("[START_DOCKING] watchTag() starts...\n")
         self.watchTag()
 
         rospy.loginfo("[START_DOCKING] positioning() starts...\n")
         self.positioning()
-
+        
+        # rospy.sleep(1.0)
         # rospy.loginfo("[START_DOCKING] Verify the tag is still visible\n")
         # rospy.loginfo("[START_DOCKING] searchTag() starts...\n")
         # self.searchTag()
@@ -635,13 +526,10 @@ class Docking():
         # rospy.loginfo("[START_DOCKING] watchTag() starts...\n")
         # self.watchTag()
         # rospy.loginfo("[START_DOCKING] docking() starts...\n")
-        # self.docking()
-
-
-
+        # self.frontal_docking()
 
 def main():
-    tp = Docking()
+    doc = Docking()
 
     try:
         rospy.spin()
